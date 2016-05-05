@@ -2091,7 +2091,7 @@ module Mail
       passed_in_options = IndifferentHash.new(hash)
       self.raw_source = ''
 
-      @header = Mail::Header.new
+      @header ||= Mail::Header.new
       @body = Mail::Body.new
       @body_raw = nil
 

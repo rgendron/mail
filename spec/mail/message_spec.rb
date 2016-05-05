@@ -1918,6 +1918,10 @@ describe Mail::Message do
         expect(@mail.reply(:from => 'Donald Ball <donald.ball@gmail.com>').from).to eq ['donald.ball@gmail.com']
       end
 
+      it "should not re-initialize header when args are passed before setting args" do
+         expect(@mail.reply(:from => 'Donald Ball <donald.ball@gmail.com>').to).to eq ['test@lindsaar.net']
+      end
+
       it "should accept a block" do
         expect(@mail.reply { from('Donald Ball <donald.ball@gmail.com>') }.from).to eq ['donald.ball@gmail.com']
       end
