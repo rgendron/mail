@@ -43,7 +43,7 @@ describe Mail::Part do
       body "This is Text"
     end
     expect(part.cid).to eq "thisis@acontentid"
-    expect(STDERR).to receive(:puts).with("Part#inline_content_id is deprecated, please call Part#cid instead")
+    expect($stderr).to receive(:puts).with("Part#inline_content_id is deprecated, please call Part#cid instead")
     expect(part.inline_content_id).to eq "thisis@acontentid"
   end
   
@@ -54,14 +54,14 @@ describe Mail::Part do
       body "This is Text"
     end
     expect(part.cid).to eq "thi%25%25sis@acontentid"
-    expect(STDERR).to receive(:puts).with("Part#inline_content_id is deprecated, please call Part#cid instead")
+    expect($stderr).to receive(:puts).with("Part#inline_content_id is deprecated, please call Part#cid instead")
     expect(part.inline_content_id).to eq "thi%25%25sis@acontentid"
   end
   
   it "should add a content_id if there is none and is asked for an inline_content_id" do
     part = Mail::Part.new
     expect(part.cid).not_to be_nil
-    expect(STDERR).to receive(:puts).with("Part#inline_content_id is deprecated, please call Part#cid instead")
+    expect($stderr).to receive(:puts).with("Part#inline_content_id is deprecated, please call Part#cid instead")
     expect(part.inline_content_id).not_to be_nil
   end
   
@@ -106,14 +106,14 @@ This message has been scanned for viruses and
 dangerous content by MailScanner, and is
 believed to be clean.
 PARTEND
-      expect(STDERR).not_to receive(:puts)
+      expect($stderr).not_to receive(:puts)
       Mail::Part.new(part)
     end
   end
   
   describe "delivery status reports" do
-    before(:each) do
-      part =<<ENDPART
+    before do
+      @delivery_report = Mail::Part.new(Mail::Utilities.to_crlf(<<ENDPART))
 Content-Type: message/delivery-status
 
 Reporting-MTA: dns; mail12.rrrr.com.au
@@ -127,7 +127,6 @@ Remote-MTA: DNS; mail.zzzzzz.com
 Diagnostic-Code: SMTP; 553 5.3.0 <edwin@zzzzzzz.com>... Unknown E-Mail Address
 Last-Attempt-Date: Mon, 24 Dec 2007 10:03:53 +1100
 ENDPART
-      @delivery_report = Mail::Part.new(part)
     end
 
     it "should know if it is a delivery-status report" do

@@ -168,32 +168,51 @@ module Mail
 
     def Encodings.address_encode(address, charset = 'utf-8')
       if address.is_a?(Array)
-        # loop back through for each element
         address.compact.map { |a| Encodings.address_encode(a, charset) }.join(", ")
-      else
-        # find any word boundary that is not ascii and encode it
-        encode_non_usascii(address, charset) if address
+      elsif address
+        encode_non_usascii(address, charset)
       end
     end
 
     def Encodings.encode_non_usascii(address, charset)
       return address if address.ascii_only? or charset.nil?
-      us_ascii = %Q{\x00-\x7f}
-      # Encode any non usascii strings embedded inside of quotes
-      address = address.gsub(/(".*?[^#{us_ascii}].*?")/) { |s| Encodings.b_value_encode(unquote(s), charset) }
-      # Then loop through all remaining items and encode as needed
-      tokens = address.split(/\s/)
-      map_with_index(tokens) do |word, i|
-        if word.ascii_only?
-          word
-        else
-          previous_non_ascii = i>0 && tokens[i-1] && !tokens[i-1].ascii_only?
-          if previous_non_ascii #why are we adding an extra space here?
-            word = " #{word}"
+
+      # With KCODE=u we can't use regexps on other encodings. Go ASCII.
+      with_ascii_kcode do
+        # Encode all strings embedded inside of quotes
+        address = address.gsub(/("[^"]*[^\/]")/) { |s| Encodings.b_value_encode(unquote(s), charset) }
+
+        # Then loop through all remaining items and encode as needed
+        tokens = address.split(/\s/)
+
+        map_with_index(tokens) do |word, i|
+          if word.ascii_only?
+            word
+          else
+            previous_non_ascii = i>0 && tokens[i-1] && !tokens[i-1].ascii_only?
+            if previous_non_ascii #why are we adding an extra space here?
+              word = " #{word}"
+            end
+            Encodings.b_value_encode(word, charset)
           end
-          Encodings.b_value_encode(word, charset)
+        end.join(' ')
+      end
+    end
+
+    if RUBY_VERSION < '1.9'
+      # With KCODE=u we can't use regexps on other encodings. Go ASCII.
+      def Encodings.with_ascii_kcode #:nodoc:
+        if $KCODE
+          $KCODE, original_kcode = '', $KCODE
         end
-      end.join(' ')
+        yield
+      ensure
+        $KCODE = original_kcode if original_kcode
+      end
+    else
+      def Encodings.with_ascii_kcode #:nodoc:
+        yield
+      end
     end
 
     # Encode a string with Base64 Encoding and returns it ready to be inserted
@@ -258,24 +277,23 @@ module Mail
       str[ENCODED_VALUE, 1]
     end
 
-    # When the encoded string consists of multiple lines, lines with the same
-    # encoding (Q or B) can be joined together.
+    # Split header line into proper encoded and unencoded parts.
     #
     # String has to be of the format =?<encoding>?[QB]?<string>?=
+    #
+    # Omit unencoded space after an encoded-word.
     def Encodings.collapse_adjacent_encodings(str)
       results = []
-      previous_encoding = nil
+      last_encoded = nil  # Track whether to preserve or drop whitespace
+
       lines = str.split(FULL_ENCODED_VALUE)
       lines.each_slice(2) do |unencoded, encoded|
-        if encoded
-          encoding = value_encoding_from_string(encoded)
-          if encoding == previous_encoding && Utilities.blank?(unencoded)
-            results.last << encoded
-          else
-            results << unencoded unless unencoded == EMPTY
-            results << encoded
+        if last_encoded = encoded
+          if !Utilities.blank?(unencoded) || (!last_encoded && unencoded != EMPTY)
+            results << unencoded
           end
-          previous_encoding = encoding
+
+          results << encoded
         else
           results << unencoded
         end

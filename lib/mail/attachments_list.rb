@@ -6,8 +6,8 @@ module Mail
       @parts_list = parts_list
       @content_disposition_type = 'attachment'
       parts_list.map { |p|
-        if p.content_type == "message/rfc822"
-          Mail.new(p.body).attachments
+        if p.mime_type == 'message/rfc822'
+          Mail.new(p.body.encoded).attachments
         elsif p.parts.empty?
           p if p.attachment?
         else
@@ -30,7 +30,7 @@ module Mail
     # mail.attachments['test.png'].filename #=> 'test.png'
     # mail.attachments[1].filename          #=> 'test.jpg'
     def [](index_value)
-      if index_value.is_a?(Fixnum)
+      if index_value.is_a?(Integer)
         self.fetch(index_value)
       else
         self.select { |a| a.filename == index_value }.first
@@ -44,6 +44,9 @@ module Mail
                          :content_disposition => "#{@content_disposition_type}; filename=\"#{encoded_name}\"" }
 
       if value.is_a?(Hash)
+        if path = value.delete(:filename)
+          value[:content] ||= File.open(path, 'rb') { |f| f.read }
+        end
 
         default_values[:body] = value.delete(:content) if value[:content]
 
@@ -60,7 +63,7 @@ module Mail
 
         if value[:mime_type]
           default_values[:content_type] = value.delete(:mime_type)
-          @mime_type = MIME::Types[default_values[:content_type]].first
+          @mime_type = MiniMime.lookup_by_content_type(default_values[:content_type])
           default_values[:content_transfer_encoding] ||= guess_encoding
         end
 
@@ -99,7 +102,8 @@ module Mail
         filename = filename.encode(Encoding::UTF_8) if filename.respond_to?(:encode)
       end
 
-      @mime_type = MIME::Types.type_for(filename).first
+      @mime_type = MiniMime.lookup_by_filename(filename)
+      @mime_type && @mime_type.content_type
     end
 
   end

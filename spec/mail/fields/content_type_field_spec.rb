@@ -75,12 +75,6 @@ describe Mail::ContentTypeField do
       expect { Mail::ContentTypeField.new("<1234@test.lindsaar.net>") }.not_to raise_error
     end
 
-    it "should accept a string with the field name" do
-      c = Mail::ContentTypeField.new('Content-Type: text/plain')
-      expect(c.name).to eq 'Content-Type'
-      expect(c.value).to eq 'text/plain'
-    end
-
     it "should accept a string without the field name" do
       c = Mail::ContentTypeField.new('text/plain')
       expect(c.name).to eq 'Content-Type'
@@ -94,7 +88,7 @@ describe Mail::ContentTypeField do
     end
 
     it "should render encoded" do
-      c = Mail::ContentTypeField.new('Content-Type: text/plain')
+      c = Mail::ContentTypeField.new('text/plain')
       expect(c.encoded).to eq "Content-Type: text/plain\r\n"
     end
 
@@ -627,16 +621,21 @@ describe Mail::ContentTypeField do
       expect(c.filename).to eq 'mikel.jpg'
     end
 
-    it "should locate an encoded name as a filename" do
-      string = %q{application/octet-stream; name*=iso-2022-jp'ja'01%20Quien%20Te%20Dij%91at.%20Pitbull.mp3}
+    it "should return an empty string when filename or name is empty" do
+      string = %q{application/octet-stream; filename=""}
       c = Mail::ContentTypeField.new(string)
-      if RUBY_VERSION >= '1.9'
-        expected = "01 Quien Te Dij\221at. Pitbull.mp3".dup.force_encoding(Encoding::BINARY)
-        result = c.filename.force_encoding(Encoding::BINARY)
-      else
-        expected = "01 Quien Te Dij\221at. Pitbull.mp3"
-        result = c.filename
-      end
+      expect(c.filename).to eq ''
+
+      string = %q{application/octet-stream; name=""}
+      c = Mail::ContentTypeField.new(string)
+      expect(c.filename).to eq ''
+    end
+
+    it "should locate an encoded name as a filename" do
+      string = %q{application/octet-stream; name*=iso-2022-jp'ja'01%20Quien%20Te%20Dijo%20feat.%20Pitbull.mp3}
+      c = Mail::ContentTypeField.new(string)
+      expected = "01 Quien Te Dijo feat. Pitbull.mp3"
+      result = c.filename
       expect(expected).to eq result
     end
 
@@ -669,12 +668,12 @@ describe Mail::ContentTypeField do
   describe "handling badly formated content-type fields" do
 
     it "should handle missing sub-type on a text content type" do
-      c = Mail::ContentTypeField.new('Content-Type: text')
+      c = Mail::ContentTypeField.new('text')
       expect(c.content_type).to eq 'text/plain'
     end
 
     it "should handle missing ; after content-type" do
-      c = Mail::ContentTypeField.new('Content-Type: multipart/mixed boundary="----=_NextPart_000_000F_01C17754.8C3CAF30"')
+      c = Mail::ContentTypeField.new('multipart/mixed boundary="----=_NextPart_000_000F_01C17754.8C3CAF30"')
       expect(c.content_type).to eq 'multipart/mixed'
       expect(c.parameters['boundary']).to eq '----=_NextPart_000_000F_01C17754.8C3CAF30'
     end

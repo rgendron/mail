@@ -76,7 +76,7 @@ describe Mail::UnstructuredField do
     end
 
     it "should just add the CRLF at the end of the line" do
-      @field = Mail::SubjectField.new("Subject: =?utf-8?Q?testing_testing_=D6=A4?=")
+      @field = Mail::SubjectField.new("=?utf-8?Q?testing_testing_=D6=A4?=")
       result = "Subject: =?UTF-8?Q?testing_testing_=D6=A4?=\r\n"
       expect(@field.encoded).to eq result
       expect(@field.decoded).to eq "testing testing \326\244"
@@ -102,6 +102,12 @@ describe Mail::UnstructuredField do
       result = %Q(Subject: =?UTF-8?Q?Her_er_=C3=A6=28=29<>@,;:\\=22/[]=3F.=3D?=\r\n)
       expect(@field.encoded).to eq result
       expect(@field.decoded).to eq string
+    end
+
+    it "should decode a utf-7(B) encoded unstructured field" do
+      string = "=?UTF-7?B?JkFPUS0mLSZBT1EtJi0mQU9RLQ==?="
+      @field = Mail::UnstructuredField.new("References", string)
+      expect(@field.decoded).to eq 'ä&ä&ä'
     end
 
     if !'1.9'.respond_to?(:force_encoding)

@@ -3,7 +3,7 @@
 require File.expand_path('../environment', __FILE__)
 
 unless defined?(MAIL_ROOT)
-  STDERR.puts("Running Specs under Ruby Version #{RUBY_VERSION}")
+  $stderr.puts("Running Specs under Ruby Version #{RUBY_VERSION}")
   MAIL_ROOT = File.join(File.dirname(__FILE__), '../')
 end
 
@@ -21,7 +21,7 @@ require File.join(File.dirname(__FILE__), 'matchers', 'break_down_to')
 
 require 'mail'
 
-STDERR.puts("Running Specs for Mail Version #{Mail::VERSION::STRING}")
+$stderr.puts("Running Specs for Mail Version #{Mail::VERSION::STRING}")
 
 RSpec.configure do |c|
   c.mock_with :rspec
@@ -33,13 +33,24 @@ end
 $KCODE='UTF8' if RUBY_VERSION < '1.9'
 
 if defined?(Encoding) && Encoding.respond_to?(:default_external=)
-  Mail::Parsers::Ragel::Ruby.silence_warnings do
+  begin
+    orig, $VERBOSE = $VERBOSE, nil
     Encoding.default_external = 'utf-8'
+  ensure
+    $VERBOSE = orig
   end
 end
 
-def fixture(*name)
-  File.join(SPEC_ROOT, 'fixtures', name)
+def fixture_path(*path)
+  File.join SPEC_ROOT, 'fixtures', path
+end
+
+def read_raw_fixture(*path)
+  File.open fixture_path(*path), 'rb', &:read
+end
+
+def read_fixture(*path)
+  Mail.read fixture_path(*path)
 end
 
 # Produces an array or printable ascii by default.
@@ -62,13 +73,17 @@ end
 
 # Original mockup from ActionMailer
 class MockSMTP
-
   def self.deliveries
     @@deliveries
   end
 
+  def self.security
+    @@security
+  end
+
   def initialize
     @@deliveries = []
+    @@security = nil
   end
 
   def sendmail(mail, from, to)
@@ -92,21 +107,26 @@ class MockSMTP
     @@deliveries = []
   end
 
-  # in the standard lib: net/smtp.rb line 577
-  #   a TypeError is thrown unless this arg is a
-  #   kind of OpenSSL::SSL::SSLContext
-  def enable_tls(context = nil)
-    if context && context.kind_of?(OpenSSL::SSL::SSLContext)
-      true
-    elsif context
-      raise TypeError,
-        "wrong argument (#{context.class})! "+
-        "(Expected kind of OpenSSL::SSL::SSLContext)"
-    end
+  def self.clear_security
+    @@security = nil
   end
 
-  def enable_starttls_auto(context = :dummy_ssl_context)
-    true
+  def enable_tls(context)
+    raise ArgumentError, "SMTPS and STARTTLS is exclusive" if @@security && @@security != :enable_tls
+    @@security = :enable_tls
+    context
+  end
+
+  def enable_starttls(context = nil)
+    raise ArgumentError, "SMTPS and STARTTLS is exclusive" if @@security == :enable_tls
+    @@security = :enable_starttls
+    context
+  end
+
+  def enable_starttls_auto(context)
+    raise ArgumentError, "SMTPS and STARTTLS is exclusive" if @@security == :enable_tls
+    @@security = :enable_starttls_auto
+    context
   end
 
 end
@@ -209,8 +229,8 @@ end
 class MockIMAPFetchData
   attr_reader :attr, :number
 
-  def initialize(rfc822, number)
-    @attr = { 'RFC822' => rfc822 }
+  def initialize(rfc822, number, flag)
+    @attr = { 'RFC822' => rfc822, 'FLAGS' => flag }
     @number = number
   end
 
@@ -220,16 +240,22 @@ class MockIMAP
   @@connection = false
   @@mailbox = nil
   @@marked_for_deletion = []
+  @@default_examples = {
+    :default => (0..19).map do |i|
+      MockIMAPFetchData.new("test#{i.to_s.rjust(2, '0')}", i, "DummyFlag#{i}")
+    end
+  }
+  @@default_examples['UTF-8'] = @@default_examples[:default].slice(0, 1)
 
-  def self.examples
-    @@examples
+  def self.examples(charset = nil)
+    @@examples.fetch(charset || :default)
   end
 
   def initialize
-    @@examples = []
-    (0..19).each do |i|
-      @@examples << MockIMAPFetchData.new("test#{i.to_s.rjust(2, '0')}", i)
-    end
+    @@examples = {
+      :default => @@default_examples[:default].dup,
+      'UTF-8' => @@default_examples['UTF-8'].dup
+    }
   end
 
   def login(user, password)
@@ -248,12 +274,12 @@ class MockIMAP
     select(mailbox)
   end
 
-  def uid_search(keys, charset=nil)
-    [*(0..@@examples.size - 1)]
+  def uid_search(keys, charset = nil)
+    [*(0..self.class.examples(charset).size - 1)]
   end
 
   def uid_fetch(set, attr)
-    [@@examples[set]]
+    [self.class.examples[set]]
   end
 
   def uid_store(set, attr, flags)
@@ -264,7 +290,7 @@ class MockIMAP
 
   def expunge
     @@marked_for_deletion.reverse.each do |i|    # start with highest index first
-      @@examples.delete_at(i)
+      self.class.examples.delete_at(i)
     end
     @@marked_for_deletion = []
   end
@@ -280,5 +306,11 @@ require 'net/imap'
 class Net::IMAP
   def self.new(*args)
     MockIMAP.new
+  end
+end
+
+module Kernel
+  def warn(m)
+    $stderr.puts(m)
   end
 end

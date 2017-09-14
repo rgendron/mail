@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 require 'mail/fields'
+require 'mail/constants'
 
 # encoding: utf-8
 module Mail
@@ -83,9 +84,31 @@ module Mail
 
       def initialize(element, value, reason)
         @element = element
-        @value = value
-        @reason = reason
-        super("#{element} can not parse |#{value}|\nReason was: #{reason}")
+        @value = to_utf8(value)
+        @reason = to_utf8(reason)
+        super("#{@element} can not parse |#{@value}|: #{@reason}")
+      end
+
+      private
+        def to_utf8(text)
+          if text.respond_to?(:force_encoding)
+            text.dup.force_encoding(Encoding::UTF_8)
+          else
+            text
+          end
+        end
+    end
+
+    class NilParseError < ParseError #:nodoc:
+      def initialize(element)
+        super element, nil, 'nil is invalid'
+      end
+    end
+
+    class IncompleteParseError < ParseError #:nodoc:
+      def initialize(element, original_text, unparsed_index)
+        parsed_text = to_utf8(original_text[0...unparsed_index])
+        super element, original_text, "Only able to parse up to #{parsed_text.inspect}"
       end
     end
 
@@ -93,41 +116,62 @@ module Mail
     class SyntaxError < FieldError #:nodoc:
     end
 
-    # Accepts a string:
+    class << self
+      # Parse a field from a raw header line:
+      #
+      #  Mail::Field.parse("field-name: field data")
+      #  # => #<Mail::Field …>
+      def parse(field, charset = nil)
+        name, value = split(field)
+        if name && value
+          new name, value, charset
+        end
+      end
+
+      def split(raw_field) #:nodoc:
+        if raw_field.index(Constants::COLON)
+          name, value = raw_field.split(Constants::COLON, 2)
+          name.rstrip!
+          if name =~ /\A#{Constants::FIELD_NAME}\z/
+            [ name.rstrip, value.strip ]
+          else
+            Kernel.warn "WARNING: Ignoring unparsable header #{raw_field.inspect}: invalid header name syntax: #{name.inspect}"
+            nil
+          end
+        else
+          raw_field.strip
+        end
+      rescue => error
+        warn "WARNING: Ignoring unparsable header #{raw_field.inspect}: #{error.class}: #{error.message}"
+        nil
+      end
+    end
+
+    # Create a field by name and optional value:
     #
-    #  Field.new("field-name: field data")
+    #  Mail::Field.new("field-name", "value")
+    #  # => #<Mail::Field …>
     #
-    # Or name, value pair:
+    # Values that aren't strings or arrays are coerced to Strings with `#to_s`.
     #
-    #  Field.new("field-name", "value")
+    #  Mail::Field.new("field-name", 1234)
+    #  # => #<Mail::Field …>
     #
-    # Or a name by itself:
-    #
-    #  Field.new("field-name")
-    #
-    # Note, does not want a terminating carriage return.  Returns
-    # self appropriately parsed.  If value is not a string, then
-    # it will be passed through as is, for example, content-type
-    # field can accept an array with the type and a hash of
-    # parameters:
-    #
-    #  Field.new('content-type', ['text', 'plain', {:charset => 'UTF-8'}])
+    #  Mail::Field.new('content-type', ['text', 'plain', {:charset => 'UTF-8'}])
+    #  # => #<Mail::Field …>
     def initialize(name, value = nil, charset = 'utf-8')
       case
-      when name.index(COLON)            # Field.new("field-name: field data")
+      when name.index(COLON)
+        Kernel.warn 'Passing an unparsed header field to Mail::Field.new is deprecated and will be removed in Mail 2.8.0. Use Mail::Field.parse instead.'
+        @name, @unparsed_value = self.class.split(name)
         @charset = Utilities.blank?(value) ? charset : value
-        @name = name[FIELD_PREFIX]
-        @raw_value = name
-        @value = nil
-      when Utilities.blank?(value)   # Field.new("field-name")
+      when Utilities.blank?(value)
         @name = name
-        @value = nil
-        @raw_value = nil
+        @unparsed_value = nil
         @charset = charset
-      else                              # Field.new("field-name", "value")
+      else
         @name = name
-        @value = value
-        @raw_value = nil
+        @unparsed_value = value
         @charset = charset
       end
       @name = FIELD_NAME_MAP[@name.to_s.downcase] || @name
@@ -138,8 +182,7 @@ module Mail
     end
 
     def field
-      _, @value = split(@raw_value) if @raw_value && !@value
-      @field ||= create_field(@name, @value, @charset)
+      @field ||= create_field(@name, @unparsed_value, @charset)
     end
 
     def name
@@ -217,11 +260,26 @@ module Mail
 
     private
 
-    def split(raw_field)
-      match_data = raw_field.mb_chars.match(FIELD_SPLIT)
-      [match_data[1].to_s.mb_chars.strip, match_data[2].to_s.mb_chars.strip.to_s]
-    rescue
-      STDERR.puts "WARNING: Could not parse (and so ignoring) '#{raw_field}'"
+    def create_field(name, value, charset)
+      new_field(name, value, charset)
+    rescue Mail::Field::ParseError => e
+      field = Mail::UnstructuredField.new(name, value)
+      field.errors << [name, value, e]
+      field
+    end
+
+    def new_field(name, value, charset)
+      value = unfold(value) if value.is_a?(String)
+
+      if klass = field_class_for(name)
+        klass.new(value, charset)
+      else
+        OptionalField.new(name, value, charset)
+      end
+    end
+
+    def field_class_for(name)
+      FIELDS_MAP[name.to_s.downcase]
     end
 
     # 2.2.3. Long Header Fields
@@ -233,30 +291,7 @@ module Mail
     #  treated in its unfolded form for further syntactic and semantic
     #  evaluation.
     def unfold(string)
-      string.gsub(/[\r\n \t]+/m, ' ')
+      string.gsub(/#{CRLF}(#{WSP})/m, '\1')
     end
-
-    def create_field(name, value, charset)
-      value = unfold(value) if value.is_a?(String)
-
-      begin
-        new_field(name, value, charset)
-      rescue Mail::Field::ParseError => e
-        field = Mail::UnstructuredField.new(name, value)
-        field.errors << [name, value, e]
-        field
-      end
-    end
-
-    def new_field(name, value, charset)
-      lower_case_name = name.to_s.downcase
-      if field_klass = FIELDS_MAP[lower_case_name]
-        field_klass.new(value, charset)
-      else
-        OptionalField.new(name, value, charset)
-      end
-    end
-
   end
-
 end

@@ -11,7 +11,7 @@ module Mail
     def initialize(value = nil, charset = 'utf-8')
       self.charset = charset
       value = ensure_filename_quoted(value)
-      super(CAPITALIZED_FIELD, strip_field(FIELD_NAME, value), charset)
+      super(CAPITALIZED_FIELD, value, charset)
       self.parse
       self
     end
@@ -38,9 +38,9 @@ module Mail
 
     def filename
       case
-      when !Utilities.blank?(parameters['filename'])
+      when parameters['filename']
         @filename = parameters['filename']
-      when !Utilities.blank?(parameters['name'])
+      when parameters['name']
         @filename = parameters['name']
       else
         @filename = nil

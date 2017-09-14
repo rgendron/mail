@@ -56,14 +56,22 @@ module Mail
     #
     # ===Making an email via a block
     #
-    #  mail = Mail.new do
-    #       from 'mikel@test.lindsaar.net'
-    #         to 'you@test.lindsaar.net'
-    #    subject 'This is a test email'
-    #       body File.read('body.txt')
+    #  mail = Mail.new do |m|
+    #    m.from 'mikel@test.lindsaar.net'
+    #    m.to 'you@test.lindsaar.net'
+    #    m.subject 'This is a test email'
+    #    m.body File.read('body.txt')
     #  end
     #
     #  mail.to_s #=> "From: mikel@test.lindsaar.net\r\nTo: you@...
+    #
+    # If may also pass a block with no arguments, in which case it will
+    # be evaluated in the scope of the new message instance:
+    #
+    #  mail = Mail.new do
+    #    from 'mikel@test.lindsaar.net'
+    #    # …
+    #  end
     #
     # ===Making an email via passing a string
     #
@@ -129,8 +137,23 @@ module Mail
         init_with_string(args.flatten[0].to_s)
       end
 
+      # Support both builder styles:
+      #
+      #   Mail.new do
+      #     to 'recipient@example.com'
+      #   end
+      #
+      # and
+      #
+      #   Mail.new do |m|
+      #     m.to 'recipient@example.com'
+      #   end
       if block_given?
-        instance_eval(&block)
+        if block.arity.zero? || (RUBY_VERSION < '1.9' && block.arity < 1)
+          instance_eval(&block)
+        else
+          yield self
+        end
       end
 
       self
@@ -213,7 +236,7 @@ module Mail
     self.default_charset = 'UTF-8'
 
     def register_for_delivery_notification(observer)
-      STDERR.puts("Message#register_for_delivery_notification is deprecated, please call Mail.register_observer instead")
+      warn("Message#register_for_delivery_notification is deprecated, please call Mail.register_observer instead")
       Mail.register_observer(observer)
     end
 
@@ -225,7 +248,7 @@ module Mail
       Mail.inform_interceptors(self)
     end
 
-    # Delivers an mail object.
+    # Delivers a mail object.
     #
     # Examples:
     #
@@ -360,13 +383,8 @@ module Mail
       if self.message_id && other.message_id
         self.encoded == other.encoded
       else
-        self_message_id, other_message_id = self.message_id, other.message_id
-        begin
-          self.message_id, other.message_id = '<temp@test>', '<temp@test>'
-          self.encoded == other.encoded
-        ensure
-          self.message_id, other.message_id = self_message_id, other_message_id
-        end
+        dup.tap { |m| m.message_id = '<temp@test>' }.encoded ==
+          other.dup.tap { |m| m.message_id = '<temp@test>' }.encoded
       end
     end
 
@@ -1193,8 +1211,8 @@ module Mail
     def default( sym, val = nil )
       if val
         header[sym] = val
-      else
-        header[sym].default if header[sym]
+      elsif field = header[sym]
+        field.default
       end
     end
 
@@ -1240,14 +1258,13 @@ module Mail
     def body(value = nil)
       if value
         self.body = value
-#        add_encoding_to_body
       else
         process_body_raw if @body_raw
         @body
       end
     end
 
-    def body_encoding(value)
+    def body_encoding(value = nil)
       if value.nil?
         body.encoding
       else
@@ -1256,7 +1273,7 @@ module Mail
     end
 
     def body_encoding=(value)
-        body.encoding = value
+      body.encoding = value
     end
 
     # Returns the list of addresses this message should be sent to by
@@ -1420,7 +1437,7 @@ module Mail
     end
 
     def has_transfer_encoding? # :nodoc:
-      STDERR.puts(":has_transfer_encoding? is deprecated in Mail 1.4.3.  Please use has_content_transfer_encoding?\n#{caller}")
+      warn(":has_transfer_encoding? is deprecated in Mail 1.4.3.  Please use has_content_transfer_encoding?\n#{caller}")
       has_content_transfer_encoding?
     end
 
@@ -1468,34 +1485,26 @@ module Mail
       if !body.empty?
         # Only give a warning if this isn't an attachment, has non US-ASCII and the user
         # has not specified an encoding explicitly.
-        if @defaulted_charset && body.raw_source.not_ascii_only? && !self.attachment?
+        if @defaulted_charset && !body.raw_source.ascii_only? && !self.attachment?
           warning = "Non US-ASCII detected and no charset defined.\nDefaulting to UTF-8, set your own if this is incorrect.\n"
-          STDERR.puts(warning)
+          warn(warning)
         end
         header[:content_type].parameters['charset'] = @charset
       end
     end
 
     # Adds a content transfer encoding
-    #
-    # Otherwise raises a warning
     def add_content_transfer_encoding
-      if body.only_us_ascii?
-        header[:content_transfer_encoding] = '7bit'
-      else
-        warning = "Non US-ASCII detected and no content-transfer-encoding defined.\nDefaulting to 8bit, set your own if this is incorrect.\n"
-        STDERR.puts(warning)
-        header[:content_transfer_encoding] = '8bit'
-      end
+      header[:content_transfer_encoding] ||= body.default_encoding
     end
 
     def add_transfer_encoding # :nodoc:
-      STDERR.puts(":add_transfer_encoding is deprecated in Mail 1.4.3.  Please use add_content_transfer_encoding\n#{caller}")
+      warn(":add_transfer_encoding is deprecated in Mail 1.4.3.  Please use add_content_transfer_encoding\n#{caller}")
       add_content_transfer_encoding
     end
 
     def transfer_encoding # :nodoc:
-      STDERR.puts(":transfer_encoding is deprecated in Mail 1.4.3.  Please use content_transfer_encoding\n#{caller}")
+      warn(":transfer_encoding is deprecated in Mail 1.4.3.  Please use content_transfer_encoding\n#{caller}")
       content_transfer_encoding
     end
 
@@ -1505,7 +1514,7 @@ module Mail
     end
 
     def message_content_type
-      STDERR.puts(":message_content_type is deprecated in Mail 1.4.3.  Please use mime_type\n#{caller}")
+      warn(":message_content_type is deprecated in Mail 1.4.3.  Please use mime_type\n#{caller}")
       mime_type
     end
 
@@ -1537,7 +1546,7 @@ module Mail
 
     # Returns the content type parameters
     def mime_parameters
-      STDERR.puts(':mime_parameters is deprecated in Mail 1.4.3, please use :content_type_parameters instead')
+      warn(':mime_parameters is deprecated in Mail 1.4.3, please use :content_type_parameters instead')
       content_type_parameters
     end
 
@@ -1563,7 +1572,14 @@ module Mail
 
     # returns the part in a multipart/report email that has the content-type delivery-status
     def delivery_status_part
-      @delivery_stats_part ||= parts.select { |p| p.delivery_status_report_part? }.first
+      unless defined? @delivery_status_part
+        @delivery_status_part =
+          if delivery_status_report?
+            parts.detect(&:delivery_status_report_part?)
+          end
+      end
+
+      @delivery_status_part
     end
 
     def bounced?
@@ -1778,9 +1794,6 @@ module Mail
       else
         basename = values[:filename]
         filedata = values
-        unless filedata[:content]
-          filedata = values.merge(:content=>File.open(values[:filename], 'rb') { |f| f.read })
-        end
       end
       self.attachments[basename] = filedata
     end
@@ -1798,7 +1811,6 @@ module Mail
     # ready to send
     def ready_to_send!
       identify_and_set_transfer_encoding
-      parts.sort!([ "text/plain", "text/enriched", "text/html", "multipart/alternative" ])
       parts.each do |part|
         part.transport_encoding = transport_encoding
         part.ready_to_send!
@@ -1807,7 +1819,7 @@ module Mail
     end
 
     def encode!
-      STDERR.puts("Deprecated in 1.1.0 in favour of :ready_to_send! as it is less confusing with encoding and decoding.")
+      warn("Deprecated in 1.1.0 in favour of :ready_to_send! as it is less confusing with encoding and decoding.")
       ready_to_send!
     end
 
@@ -1823,16 +1835,13 @@ module Mail
     end
 
     def without_attachments!
-      return self unless has_attachments?
+      if has_attachments?
+        parts.delete_if { |p| p.attachment? }
 
-      parts.delete_if { |p| p.attachment? }
-      body_raw = if parts.empty?
-                   ''
-                 else
-                   body.encoded
-                 end
-
-      @body = Mail::Body.new(body_raw)
+        reencoded = parts.empty? ? '' : body.encoded(content_transfer_encoding)
+        @body = nil # So the new parts won't be added to the existing body
+        self.body = reencoded
+      end
 
       self
     end
@@ -1975,7 +1984,7 @@ module Mail
 
   private
 
-    HEADER_SEPARATOR = /#{CRLF}#{CRLF}|#{CRLF}#{WSP}*#{CRLF}(?!#{WSP})/m
+    HEADER_SEPARATOR = /#{CRLF}#{CRLF}/
 
     #  2.1. General Description
     #   A message consists of header fields (collectively called "the header
@@ -1984,9 +1993,6 @@ module Mail
     #   this standard. The body is simply a sequence of characters that
     #   follows the header and is separated from the header by an empty line
     #   (i.e., a line with nothing preceding the CRLF).
-    #
-    # Additionally, I allow for the case where someone might have put whitespace
-    # on the "gap line"
     def parse_message
       header_part, body_part = raw_source.lstrip.split(HEADER_SEPARATOR, 2)
       self.header = header_part
@@ -1995,7 +2001,7 @@ module Mail
 
     def raw_source=(value)
       value = value.dup.force_encoding(Encoding::BINARY) if RUBY_VERSION >= "1.9.1"
-      @raw_source = ::Mail::Utilities.to_crlf(value)
+      @raw_source = value
     end
 
     # see comments to body=. We take data and process it lazily
@@ -2007,11 +2013,9 @@ module Mail
         @body_raw = nil
         add_encoding_to_body
       when @body && @body.multipart?
-        @body << Mail::Part.new(value)
-        add_encoding_to_body
+        self.text_part = value
       else
         @body_raw = value
-#        process_body_raw
       end
     end
 
@@ -2026,7 +2030,7 @@ module Mail
 
     def set_envelope_header
       raw_string = raw_source.to_s
-      if match_data = raw_source.to_s.match(/\AFrom\s(#{TEXT}+)#{CRLF}/m)
+      if match_data = raw_string.match(/\AFrom\s(#{TEXT}+)#{CRLF}/m)
         set_envelope(match_data[1])
         self.raw_source = raw_string.sub(match_data[0], "")
       end
@@ -2036,6 +2040,13 @@ module Mail
       body.split!(boundary)
     end
 
+    def allowed_encodings
+      case mime_type
+      when 'message/rfc822'
+        [Encodings::SevenBit, Encodings::EightBit, Encodings::Binary]
+      end
+    end
+
     def add_encoding_to_body
       if has_content_transfer_encoding?
         @body.encoding = content_transfer_encoding
@@ -2043,11 +2054,11 @@ module Mail
     end
 
     def identify_and_set_transfer_encoding
-        if body && body.multipart?
-            self.content_transfer_encoding = @transport_encoding
-        else
-            self.content_transfer_encoding = body.get_best_encoding(@transport_encoding)
-        end
+      if body && body.multipart?
+        self.content_transfer_encoding = @transport_encoding
+      else
+        self.content_transfer_encoding = body.get_best_encoding(@transport_encoding, allowed_encodings)
+      end
     end
 
     def add_required_fields
@@ -2130,10 +2141,10 @@ module Mail
       content_disp_name = header[:content_disposition].filename rescue nil
       content_loc_name  = header[:content_location].location rescue nil
       case
-      when content_type && content_type_name
-        filename = content_type_name
       when content_disposition && content_disp_name
         filename = content_disp_name
+      when content_type && content_type_name
+        filename = content_type_name
       when content_location && content_loc_name
         filename = content_loc_name
       else

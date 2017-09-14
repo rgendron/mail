@@ -5,13 +5,23 @@ module Mail
   class Ruby19
     class StrictCharsetEncoder
       def encode(string, charset)
-        string.force_encoding(Mail::Ruby19.pick_encoding(charset))
+        case charset
+        when /utf-?7/i
+          Mail::Ruby19.decode_utf7(string)
+        else
+          string.force_encoding(Mail::Ruby19.pick_encoding(charset))
+        end
       end
     end
 
     class BestEffortCharsetEncoder
       def encode(string, charset)
-        string.force_encoding(pick_encoding(charset))
+        case charset
+        when /utf-?7/i
+          Mail::Ruby19.decode_utf7(string)
+        else
+          string.force_encoding(pick_encoding(charset))
+        end
       end
 
       private
@@ -32,7 +42,7 @@ module Mail
     class << self
       attr_accessor :charset_encoder
     end
-    self.charset_encoder = StrictCharsetEncoder.new
+    self.charset_encoder = BestEffortCharsetEncoder.new
 
     # Escapes any parenthesis in a string that are unescaped this uses
     # a Ruby 1.9.1 regexp feature of negative look behind
@@ -59,6 +69,9 @@ module Mail
     end
 
     def Ruby19.decode_base64(str)
+      if !str.end_with?("=") && str.length % 4 != 0
+        str = str.ljust((str.length + 3) & ~3, "=")
+      end
       str.unpack( 'm' ).first
     end
 
@@ -75,7 +88,32 @@ module Mail
     end
 
     def Ruby19.transcode_charset(str, from_encoding, to_encoding = Encoding::UTF_8)
-      charset_encoder.encode(str.dup, from_encoding).encode(to_encoding, :undef => :replace, :invalid => :replace, :replace => '')
+      to_encoding = to_encoding.to_s if RUBY_VERSION < '1.9.3'
+      to_encoding = Encoding.find(to_encoding)
+      replacement_char = to_encoding == Encoding::UTF_8 ? '�' : '?'
+      charset_encoder.encode(str.dup, from_encoding).encode(to_encoding, :undef => :replace, :invalid => :replace, :replace => replacement_char)
+    end
+
+    # From Ruby stdlib Net::IMAP
+    def Ruby19.encode_utf7(string)
+      string.gsub(/(&)|[^\x20-\x7e]+/) do
+        if $1
+          "&-"
+        else
+          base64 = [$&.encode(Encoding::UTF_16BE)].pack("m0")
+          "&" + base64.delete("=").tr("/", ",") + "-"
+        end
+      end.force_encoding(Encoding::ASCII_8BIT)
+    end
+
+    def Ruby19.decode_utf7(utf7)
+      utf7.gsub(/&([^-]+)?-/n) do
+        if $1
+          ($1.tr(",", "/") + "===").unpack("m")[0].encode(Encoding::UTF_8, Encoding::UTF_16BE)
+        else
+          "&"
+        end
+      end
     end
 
     def Ruby19.b_value_encode(str, encoding = nil)
@@ -90,8 +128,7 @@ module Mail
         str = Ruby19.decode_base64(match[2])
         str = charset_encoder.encode(str, charset)
       end
-      decoded = str.encode(Encoding::UTF_8, :invalid => :replace, :replace => "")
-      decoded.valid_encoding? ? decoded : decoded.encode(Encoding::UTF_16LE, :invalid => :replace, :replace => "").encode(Encoding::UTF_8)
+      transcode_to_scrubbed_utf8(str)
     rescue Encoding::UndefinedConversionError, ArgumentError, Encoding::ConverterNotFoundError
       warn "Encoding conversion failed #{$!}"
       str.dup.force_encoding(Encoding::UTF_8)
@@ -115,8 +152,7 @@ module Mail
         # jruby/jruby#829 which subtly changes String#encode semantics.
         str.force_encoding(Encoding::UTF_8) if str.encoding == Encoding::ASCII_8BIT
       end
-      decoded = str.encode(Encoding::UTF_8, :invalid => :replace, :replace => "")
-      decoded.valid_encoding? ? decoded : decoded.encode(Encoding::UTF_16LE, :invalid => :replace, :replace => "").encode(Encoding::UTF_8)
+      transcode_to_scrubbed_utf8(str)
     rescue Encoding::UndefinedConversionError, ArgumentError, Encoding::ConverterNotFoundError
       warn "Encoding conversion failed #{$!}"
       str.dup.force_encoding(Encoding::UTF_8)
@@ -125,7 +161,10 @@ module Mail
     def Ruby19.param_decode(str, encoding)
       str = uri_parser.unescape(str)
       str = charset_encoder.encode(str, encoding) if encoding
-      str
+      transcode_to_scrubbed_utf8(str)
+    rescue Encoding::UndefinedConversionError, ArgumentError, Encoding::ConverterNotFoundError
+      warn "Encoding conversion failed #{$!}"
+      str.dup.force_encoding(Encoding::UTF_8)
     end
 
     def Ruby19.param_encode(str)
@@ -211,12 +250,18 @@ module Mail
         if encoding.is_a?(Encoding)
           encoding
         else
+          # Fall back to ASCII for charsets that Ruby doesn't recognize
           begin
             Encoding.find(encoding)
           rescue ArgumentError
             Encoding::BINARY
           end
         end
+      end
+
+      def transcode_to_scrubbed_utf8(str)
+        decoded = str.encode(Encoding::UTF_8, :undef => :replace, :invalid => :replace, :replace => "�")
+        decoded.valid_encoding? ? decoded : decoded.encode(Encoding::UTF_16LE, :invalid => :replace, :replace => "�").encode(Encoding::UTF_8)
       end
     end
   end

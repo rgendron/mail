@@ -1,54 +1,34 @@
-require 'erb'
+load 'lib/mail/parsers.rb'
 
-MAIL_ROOT = File.expand_path("../..", __FILE__)
-require "#{MAIL_ROOT}/lib/mail/parsers/ragel/parser_info"
+# RFC 6532 extensions rely on RFC 3629 UTF-8 chars
+rule 'lib/mail/parsers/rfc5234_abnf_core_rules.rl' => 'lib/mail/parsers/rfc3629_utf8.rl'
 
-namespace :ragel do
-  # Ruby Parsers
-  RB_DIR = "#{MAIL_ROOT}/lib/mail/parsers/ragel/ruby"
-  RB_RAGEL_TEMPLATE = "#{RB_DIR}/parser.rb.rl.erb"
-  def generate_rb_ragel_file(parser_name)
-    parser_name_cc = parser_name.gsub('parser','machine').split('_').map{|e| e.capitalize}.join + "Machine"
-    ragel_rb_source_template = ERB.new(IO.read(RB_RAGEL_TEMPLATE))
-    ragel_rb_source_template.result(binding)
-  end
+# All RFC 5322 parsers depend on ABNF core rules
+rule %r|/rfc5322_.+\.rl\z/| => 'lib/mail/parsers/rfc5234_abnf_core_rules.rl'
 
-  RB_GEN_DIR = "#{RB_DIR}/machines"
+# RFC 5322 parser depends on its submodules
+file 'lib/mail/parsers/rfc5322.rl' => FileList['lib/mail/parsers/rfc5322_*.rl']
 
-  directory RB_GEN_DIR
-
-  RB_ACTIONS = "#{RB_GEN_DIR}/rb_actions.rl"
-  file RB_ACTIONS do
-    actions = Mail::Parsers::Ragel::ACTIONS.each_with_index.map do |action,idx|
-      "action #{action} { actions.push(#{idx}, p) }"
-    end.join("\n")
-    actions_rl = "%%{\nmachine rb_actions;\n#{actions}\n}%%"
-    File.open(RB_ACTIONS,"w+") { |f| f.write actions_rl }
-  end
-
-  RB_RAGEL_PARSERS = []
-  Mail::Parsers::Ragel::FIELD_PARSERS.each do |p|
-    path = "#{RB_GEN_DIR}/#{p}_machine.rb.rl"
-    RB_RAGEL_PARSERS << path
-    file path do
-      File.open(path, "w+") { |f| f.write(generate_rb_ragel_file(p)) }
-    end
-  end
-  RB_RAGEL_FILES = [RB_GEN_DIR, RB_ACTIONS] + RB_RAGEL_PARSERS
-
-  task :generate_ragel_files => RB_RAGEL_FILES
-
-  RB_PARSERS = []
-  RB_RAGEL_PARSERS.each do |ragel_path|
-    path = ragel_path.gsub(".rl", "")
-    RB_PARSERS << path
-    file path do
-      `ragel -sR -F1 -o #{path} #{ragel_path}`
-    end
-  end
-
-  task :generate_ruby_parsers => RB_PARSERS
-
-  desc "Generate ruby parsers from ragel files"
-  task :generate => [:generate_ragel_files, :generate_ruby_parsers]
+# Ruby parsers depend on Ragel parser definitions
+# (remove -L to include line numbers for debugging)
+rule %r|/_parser\.rb\z/| => '.rl' do |t|
+  sh "ragel -s -R -L -F1 -o #{t.name} #{t.source}"
 end
+
+# Dot files for Ragel parsers
+rule %r|/_parser\.dot\z/| => '.rl' do |t|
+  sh "ragel -s -V -o #{t.name} #{t.source}"
+end
+
+rule %r|/_parser\.svg\z/| => '.dot' do |t|
+  sh "dot -v -Tsvg -Goverlap=scale -o #{t.name} #{t.source}"
+end
+
+desc "Generate Ruby parsers from Ragel definitions"
+namespace :ragel do
+  ragel_parsers = FileList['lib/mail/parsers/*_parser.rl']
+  task :generate => ragel_parsers.ext('.rb')
+  task :svg => ragel_parsers.ext('.svg')
+end
+
+task :ragel => 'ragel:generate'

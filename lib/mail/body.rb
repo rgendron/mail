@@ -32,7 +32,7 @@ module Mail
       @preamble = nil
       @epilogue = nil
       @charset  = nil
-      @part_sort_order = [ "text/plain", "text/enriched", "text/html" ]
+      @part_sort_order = [ "text/plain", "text/enriched", "text/html", "multipart/alternative" ]
       @parts = Mail::PartsList.new
       if Utilities.blank?(string)
         @raw_source = ''
@@ -46,10 +46,10 @@ module Mail
           raise "You can only assign a string or an object that responds_to? :join or :to_s to a body."
         end
       end
-      @encoding = (only_us_ascii? ? '7bit' : '8bit')
+      @encoding = default_encoding
       set_charset
     end
-    
+
     # Matches this body with another body.  Also matches the decoded value of this
     # body with a string.
     # 
@@ -115,8 +115,8 @@ module Mail
     end
 
     # Allows you to set the sort order of the parts, overriding the default sort order.
-    # Defaults to 'text/plain', then 'text/enriched', then 'text/html' with any other content
-    # type coming after.
+    # Defaults to 'text/plain', then 'text/enriched', then 'text/html', then 'multipart/alternative'
+    # with any other content type coming after.
     def set_sort_order(order)
       @part_sort_order = order
     end
@@ -138,12 +138,12 @@ module Mail
     def raw_source
       @raw_source
     end
-   
-    def get_best_encoding(target)
+
+    def get_best_encoding(target, allowed_encodings = nil)
       target_encoding = Mail::Encodings.get_encoding(target)
-      target_encoding.get_best_compatible(encoding, raw_source)
+      target_encoding.get_best_compatible(encoding, raw_source, allowed_encodings)
     end
- 
+
     # Returns a body encoded using transfer_encoding.  Multipart always uses an
     # identiy encoding (i.e. no encoding).
     # Calling this directly is not a good idea, but supported for compatibility
@@ -158,17 +158,17 @@ module Mail
         dec = Mail::Encodings::get_encoding(encoding)
         enc = Mail::Encodings::get_encoding(be)
         if dec.nil?
-            # Cannot decode, so skip normalization
-            raw_source
+          # Cannot decode, so skip normalization
+          raw_source
         else
-            # Decode then encode to normalize and allow transforming 
-            # from base64 to Q-P and vice versa
-            decoded = dec.decode(raw_source)
-            if defined?(Encoding) && charset && charset != "US-ASCII"
-              decoded.encode!(charset)
-              decoded.force_encoding('BINARY') unless Encoding.find(charset).ascii_compatible?
-            end
-            enc.encode(decoded)
+          # Decode then encode to normalize and allow transforming 
+          # from base64 to Q-P and vice versa
+          decoded = dec.decode(raw_source)
+          if defined?(Encoding) && charset && charset != "US-ASCII"
+            decoded = decoded.encode(charset)
+            decoded.force_encoding('BINARY') unless Encoding.find(charset).ascii_compatible?
+          end
+          enc.encode(decoded)
         end
       end
     end
@@ -200,13 +200,14 @@ module Mail
         @encoding
       end
     end
-    
+
     def encoding=( val )
-      @encoding = if val == "text" || Utilities.blank?(val)
-          (only_us_ascii? ? '7bit' : '8bit')
-      else
+      @encoding =
+        if val == "text" || Utilities.blank?(val)
+          default_encoding
+        else
           val
-      end
+        end
     end
 
     # Returns the preamble (any text that is before the first MIME boundary)
@@ -268,14 +269,21 @@ module Mail
       self
     end
 
-    def only_us_ascii?
-      !(raw_source =~ /[^\x01-\x7f]/)
+    def ascii_only?
+      unless defined? @ascii_only
+        @ascii_only = raw_source.ascii_only?
+      end
+      @ascii_only
     end
-    
+
     def empty?
       !!raw_source.to_s.empty?
     end
-    
+
+    def default_encoding
+      ascii_only? ? '7bit' : '8bit'
+    end
+
     private
 
     # split parts by boundary, ignore first part if empty, append final part when closing boundary was missing
@@ -308,9 +316,9 @@ module Mail
     def end_boundary
       "\r\n--#{boundary}--\r\n"
     end
-    
+
     def set_charset
-      only_us_ascii? ? @charset = 'US-ASCII' : @charset = nil
+      @charset = ascii_only? ? 'US-ASCII' : nil
     end
   end
 end

@@ -1,5 +1,64 @@
 == HEAD
 
+Security:
+* #1097 – SMTP security: prevent command injection via To/From addresses. (jeremy)
+
+Features:
+* #647 – IMAP: specify IMAP server search charset with Mail.find(search_charset: 'UTF-8'). (yalab)
+* #650 - UTF-7 charset support. (johngrimes)
+* #664 - RSpec: with_html and with_text matchers. (zakkie)
+* #723 – IMAP: support `enable_starttls: true` for TLS upgrade on non-IMAPS/SSL servers. (doits)
+* #804 - Configurable SMTP open_timeout and read_timeout. (ankane)
+* #853 - `Mail::Message#set_sort_order` overrides the default message part sort order. (rafbm)
+* #856 - Added :logger delivery method. (zacholauson)
+* #900 - Support non-instance_eval builder API. Yield self to Mail.new if the provided block takes any arguments. (taavo)
+* #1065 - Require STARTTLS using :enable_starttls. (bk2204)
+* #1002 - Transcoding replaces invalid chars with "�" instead of discarding them. (kjg)
+* #1053 - Ruby 2.4.0 compatibility. Fixnum+Bignum unified as Integer. (peterkovacs)
+* #1094 - Core extensions removal: Drop `String#at`, `from`, `last` and `is_utf8?` since they are no longer used by Mail internals. (metcalf)
+* #1095 - Core extensions removal: Drop `String#mb_chars`, `not_ascii_only?`, `constantize`, `first`, `to` to avoid monkey patching the standard library. (metcalf)
+* #1111  - Mail::Field.parse API which deprecates calling Mail::Field.new with unparsed header fields. (jeremy)
+
+Performance:
+* #1059 - Switch from mime-types to mini_mime for a much smaller memory footprint. (SamSaffron)
+* #1119 - Speed up large attachment encoding by memoizing slow ASCII-only checks. (dalibor)
+
+Compatibility:
+* #464 - Improve attachment filename detection by preferring Content-Disposition filename. (lawrencepit)
+* #535 - IMAP: fetch messages WITH IMAP FLAGS by passing a block with four args. (lawrencepit)
+* #558 - Parser: cope with unknown charsets in header fields by falling back to ASCII. (boesemar)
+* #655 - Sort attachments to the end of the parts list to work around email clients that may mistake a text attachment for the message body. (npickens)
+* #683 - SMTP: Work around Net::SMTP dot-stuffing bug with unterminated newlines on Ruby 1.8 and 1.9. (yyyc514)
+* #766 - No longer strip 'Subject: ' from legit subject lines. (grosser)
+* #982 – Faithfully preserve unfolded whitespace rather than collapsing to a single space. (jeremy)
+* #1103 – Support parsing UTF-8 headers. Implements RFC 6532. (jeremy)
+* #1106 – Limit message/rfc822 parts' transfer encoding per RFC 2046. (ahorek)
+* #1112 – Support Windows-1258 charset by parsing it as Windows-1252 in Ruby. (jeremy)
+* #1114 – Setting `mail.body = …` on a multipart message now adds a new text part instead of adding a raw MIME part. (jeremy)
+
+Bugs:
+* #539 - Fix that whitespace-only continued headers would be incorrectly parsed as the break between headers and body. (ConradIrwin)
+* #605 - Fix Mail::Address#name for nil addresses (peterkovacs)
+* #684 - Fix recursively fetching attachments from an embedded message/rfc822 part whose Content-Type header has additional parameters. (vongruenigen)
+* #689 - Fix Exim delivery method broken by #477 in 2.5.4. (jethrogb)
+* #792 - Allow blank filenames in Content-Disposition field. (robinroestenburg)
+* #876 - Strip valid RFC-1342 separator characters between non-matching encoded-words (Caleb W. Corliss)
+* #876 - Fix that Mail::Message#add_file was adding a stray filename header (kirikak2)
+* #923 – Fix decoding nested quotes around non-US-ASCII addresses. (averell23)
+* #978 - Fix for invalid chars being left in a string for invalid b_value from encoding. (kjg)
+* #996 - Fix that multipart/mixed emails with a delivery-status part could be interpreted as bounces. (kjg)
+* #998 - Fix header parameter parsing (such as attachment names) for values encoded with a blank charset or language code. (kjg)
+* #1000 - Fix header parameter parsing (such as attachment names) to transcode to UTF-8 (kjg)
+* #1003 - Fix decoding some b encoded headers on specific rubies that don't account for lack of base64 padding (kjg)
+* #1020 - Don't set SMTP verify mode to nil when config was not provided. (jhass)
+* #1023 - Fix double-quoting in display names. (garethrees)
+* #1032 - Fix that comparing messages changed their raw Message-ID to their parsed message_id. (bobjflong)
+* #1074 - Fix that the first address in a list is dropped when a subsequent address has non-US-ASCII characters. (domininik)
+* #1107 - Fix Address#display_name and other formatting flip-flopping between encoded and decoded forms depending on whether #encoded or #decoded was called last. (jeremy)
+* #1110 - Fix that Mail::Multibyte::Chars#initialize mutated its argument by calling force_encoding on it. (jeremy)
+* #1113 - Eliminate attachment corruption caused by CRLF conversion. (jeremy)
+* #1131 - Fix that Message#without_attachments! didn't parse the remaining parts. (jeremy)
+
 == Version 2.6.4 - Wed Mar 23 08:16 -0700 2016 Jeremy Daer <jeremydaer@gmail.com>
 
 Features:

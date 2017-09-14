@@ -10,7 +10,8 @@ describe "IMAP Retriever" do
                                 :port       => 993,
                                 :user_name  => nil,
                                 :password   => nil,
-                                :enable_ssl => true }
+                                :enable_ssl => true,
+                                :enable_starttls => false }
     end
   end
 
@@ -34,6 +35,7 @@ describe "IMAP Retriever" do
 
       expect(MockIMAP).to be_disconnected
     end
+
     it "should get all emails and yield the imap, uid, and email when given a block of arity 3" do
       expect(MockIMAP).to be_disconnected
 
@@ -44,11 +46,33 @@ describe "IMAP Retriever" do
         messages << message
         uids << uid
       end
-      expect(messages.map { |m| m.raw_source }.sort).to eq MockIMAP.examples.map { |m| m.attr['RFC822']}.sort
+
+      expect(messages.map { |m| m.raw_source }.sort).to eq MockIMAP.examples.map { |m| m.attr['RFC822'] }.sort
       expect(uids.sort).to eq MockIMAP.examples.map { |m| m.number }.sort
 
       expect(MockIMAP).to be_disconnected
     end
+
+    it "should get all emails and yield the imap, uid, flag, and email when given a block of arity 4" do
+      expect(MockIMAP).to be_disconnected
+
+      messages = []
+      uids = []
+      flags = []
+      Mail.all do |message, imap, uid, flag|
+        expect(MockIMAP).to be === imap
+        messages << message
+        uids << uid
+        flags << flag
+      end
+
+      expect(messages.map { |m| m.raw_source }.sort).to eq MockIMAP.examples.map { |m| m.attr['RFC822']}.sort
+      expect(uids.sort).to eq MockIMAP.examples.map { |m| m.number }.sort
+      expect(flags.sort).to eq MockIMAP.examples.map { |m| m.attr['FLAGS'] }.sort
+
+      expect(MockIMAP).to be_disconnected
+    end
+
   end
 
   describe "find and options" do
@@ -113,6 +137,13 @@ describe "IMAP Retriever" do
       expect(MockIMAP.examples.size).to eq 5
     end
 
+    it "should pass :search_charset to IMAP uid_search" do
+      messages = Mail.find(:search_charset => 'UTF-8')
+      expect(messages.size).to eq(1)
+
+      message = messages.first
+      expect(message.raw_source).to eq MockIMAP.examples[0].attr['RFC822']
+    end
   end
 
   describe "last" do
@@ -230,6 +261,32 @@ describe "IMAP Retriever" do
       expect { Mail.all { |m| raise ArgumentError.new } }.to raise_error(ArgumentError)
 
       expect(MockIMAP).to be_disconnected
+    end
+  end
+
+  describe "STARTTLS" do
+    before do
+      @imap = MockIMAP.new
+      allow(MockIMAP).to receive(:new).and_return(@imap)
+    end
+
+    it "calls starttls to upgrade" do
+      Mail.defaults do
+        retriever_method :imap, :enable_starttls => true
+      end
+
+      expect(@imap).to receive(:starttls)
+      Mail.find
+    end
+
+    it "conflicts with enable_ssl" do
+      Mail.defaults do
+        retriever_method :imap, :enable_starttls => true, :enable_ssl => true
+      end
+
+      expect {
+        Mail.find
+      }.to raise_error(ArgumentError)
     end
   end
 

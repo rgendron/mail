@@ -1,5 +1,6 @@
 # encoding: utf-8
 # frozen_string_literal: true
+require 'mail/multibyte/unicode'
 
 module Mail #:nodoc:
   module Multibyte #:nodoc:
@@ -40,7 +41,7 @@ module Mail #:nodoc:
       if RUBY_VERSION >= "1.9"
         # Creates a new Chars instance by wrapping _string_.
         def initialize(string)
-          @wrapped_string = string
+          @wrapped_string = string.dup
           @wrapped_string.force_encoding(Encoding::UTF_8) unless @wrapped_string.frozen?
         end
       else
@@ -103,7 +104,7 @@ module Mail #:nodoc:
         # Returns a new Chars object containing the _other_ object concatenated to the string.
         #
         # Example:
-        #   ('Café'.mb_chars + ' périferôl').to_s # => "Café périferôl"
+        #   (Mail::Multibyte.mb_chars('Café') + ' périferôl').to_s # => "Café périferôl"
         def +(other)
           chars(@wrapped_string + other)
         end
@@ -111,7 +112,7 @@ module Mail #:nodoc:
         # Like <tt>String#=~</tt> only it returns the character offset (in codepoints) instead of the byte offset.
         #
         # Example:
-        #   'Café périferôl'.mb_chars =~ /ô/ # => 12
+        #   Mail::Multibyte.mb_chars('Café périferôl') =~ /ô/ # => 12
         def =~(other)
           translate_offset(@wrapped_string =~ other)
         end
@@ -119,7 +120,7 @@ module Mail #:nodoc:
         # Inserts the passed string at specified codepoint offsets.
         #
         # Example:
-        #   'Café'.mb_chars.insert(4, ' périferôl').to_s # => "Café périferôl"
+        #   Mail::Multibyte.mb_chars('Café').insert(4, ' périferôl').to_s # => "Café périferôl"
         def insert(offset, fragment)
           unpacked = Unicode.u_unpack(@wrapped_string)
           unless offset > unpacked.length
@@ -135,7 +136,7 @@ module Mail #:nodoc:
         # Returns +true+ if contained string contains _other_. Returns +false+ otherwise.
         #
         # Example:
-        #   'Café'.mb_chars.include?('é') # => true
+        #   Mail::Multibyte.mb_chars('Café').include?('é') # => true
         def include?(other)
           # We have to redefine this method because Enumerable defines it.
           @wrapped_string.include?(other)
@@ -144,8 +145,8 @@ module Mail #:nodoc:
         # Returns the position _needle_ in the string, counting in codepoints. Returns +nil+ if _needle_ isn't found.
         #
         # Example:
-        #   'Café périferôl'.mb_chars.index('ô')   # => 12
-        #   'Café périferôl'.mb_chars.index(/\w/u) # => 0
+        #   Mail::Multibyte.mb_chars('Café périferôl').index('ô')   # => 12
+        #   Mail::Multibyte.mb_chars('Café périferôl').index(/\w/u) # => 0
         def index(needle, offset=0)
           wrapped_offset = first(offset).wrapped_string.length
           index = @wrapped_string.index(needle, wrapped_offset)
@@ -157,8 +158,8 @@ module Mail #:nodoc:
         # string. Returns +nil+ if _needle_ isn't found.
         #
         # Example:
-        #   'Café périferôl'.mb_chars.rindex('é')   # => 6
-        #   'Café périferôl'.mb_chars.rindex(/\w/u) # => 13
+        #   Mail::Multibyte.mb_chars('Café périferôl').rindex('é')   # => 6
+        #   Mail::Multibyte.mb_chars('Café périferôl').rindex(/\w/u) # => 13
         def rindex(needle, offset=nil)
           offset ||= length
           wrapped_offset = first(offset).wrapped_string.length
@@ -190,7 +191,7 @@ module Mail #:nodoc:
         # Returns the codepoint of the first character in the string.
         #
         # Example:
-        #   'こんにちは'.mb_chars.ord # => 12371
+        #   Mail::Multibyte.mb_chars('こんにちは').ord # => 12371
         def ord
           Unicode.u_unpack(@wrapped_string)[0]
         end
@@ -199,10 +200,10 @@ module Mail #:nodoc:
         #
         # Example:
         #
-        #   "¾ cup".mb_chars.rjust(8).to_s
+        #   Mail::Multibyte.mb_chars("¾ cup").rjust(8).to_s
         #   # => "   ¾ cup"
         #
-        #   "¾ cup".mb_chars.rjust(8, " ").to_s # Use non-breaking whitespace
+        #   Mail::Multibyte.mb_chars("¾ cup").rjust(8, " ").to_s # Use non-breaking whitespace
         #   # => "   ¾ cup"
         def rjust(integer, padstr=' ')
           justify(integer, :right, padstr)
@@ -212,10 +213,10 @@ module Mail #:nodoc:
         #
         # Example:
         #
-        #   "¾ cup".mb_chars.rjust(8).to_s
+        #   Mail::Multibyte.mb_chars("¾ cup").rjust(8).to_s
         #   # => "¾ cup   "
         #
-        #   "¾ cup".mb_chars.rjust(8, " ").to_s # Use non-breaking whitespace
+        #   Mail::Multibyte.mb_chars("¾ cup").rjust(8, " ").to_s # Use non-breaking whitespace
         #   # => "¾ cup   "
         def ljust(integer, padstr=' ')
           justify(integer, :left, padstr)
@@ -225,10 +226,10 @@ module Mail #:nodoc:
         #
         # Example:
         #
-        #   "¾ cup".mb_chars.center(8).to_s
+        #   Mail::Multibyte.mb_chars("¾ cup").center(8).to_s
         #   # => " ¾ cup  "
         #
-        #   "¾ cup".mb_chars.center(8, " ").to_s # Use non-breaking whitespace
+        #   Mail::Multibyte.mb_chars("¾ cup").center(8, " ").to_s # Use non-breaking whitespace
         #   # => " ¾ cup  "
         def center(integer, padstr=' ')
           justify(integer, :center, padstr)
@@ -244,7 +245,7 @@ module Mail #:nodoc:
       # instances instead of String. This makes chaining methods easier.
       #
       # Example:
-      #   'Café périferôl'.mb_chars.split(/é/).map { |part| part.upcase.to_s } # => ["CAF", " P", "RIFERÔL"]
+      #   Mail::Multibyte.mb_chars('Café périferôl').split(/é/).map { |part| part.upcase.to_s } # => ["CAF", " P", "RIFERÔL"]
       def split(*args)
         @wrapped_string.split(*args).map { |i| i.mb_chars }
       end
@@ -269,12 +270,12 @@ module Mail #:nodoc:
           @wrapped_string[*args] = replace_by
         else
           result = Unicode.u_unpack(@wrapped_string)
-          if args[0].is_a?(Fixnum)
+          if args[0].is_a?(Integer)
             raise IndexError, "index #{args[0]} out of string" if args[0] >= result.length
             min = args[0]
             max = args[1].nil? ? min : (min + args[1] - 1)
             range = Range.new(min, max)
-            replace_by = [replace_by].pack('U') if replace_by.is_a?(Fixnum)
+            replace_by = [replace_by].pack('U') if replace_by.is_a?(Integer)
           elsif args.first.is_a?(Range)
             raise RangeError, "#{args[0]} out of range" if args[0].min >= result.length
             range = args[0]
@@ -292,7 +293,7 @@ module Mail #:nodoc:
       # Reverses all characters in the string.
       #
       # Example:
-      #   'Café'.mb_chars.reverse.to_s # => 'éfaC'
+      #   Mail::Multibyte.mb_chars('Café').reverse.to_s # => 'éfaC'
       def reverse
         chars(Unicode.g_unpack(@wrapped_string).reverse.flatten.pack('U*'))
       end
@@ -301,7 +302,7 @@ module Mail #:nodoc:
       # character.
       #
       # Example:
-      #   'こんにちは'.mb_chars.slice(2..3).to_s # => "にち"
+      #   Mail::Multibyte.mb_chars('こんにちは').slice(2..3).to_s # => "にち"
       def slice(*args)
         if args.size > 2
           raise ArgumentError, "wrong number of arguments (#{args.size} for 1)" # Do as if we were native
@@ -338,7 +339,7 @@ module Mail #:nodoc:
       # Convert characters in the string to uppercase.
       #
       # Example:
-      #   'Laurent, où sont les tests ?'.mb_chars.upcase.to_s # => "LAURENT, OÙ SONT LES TESTS ?"
+      #   Mail::Multibyte.mb_chars('Laurent, où sont les tests ?').upcase.to_s # => "LAURENT, OÙ SONT LES TESTS ?"
       def upcase
         chars(Unicode.apply_mapping(@wrapped_string, :uppercase_mapping))
       end
@@ -346,7 +347,7 @@ module Mail #:nodoc:
       # Convert characters in the string to lowercase.
       #
       # Example:
-      #   'VĚDA A VÝZKUM'.mb_chars.downcase.to_s # => "věda a výzkum"
+      #   Mail::Multibyte.mb_chars('VĚDA A VÝZKUM').downcase.to_s # => "věda a výzkum"
       def downcase
         chars(Unicode.apply_mapping(@wrapped_string, :lowercase_mapping))
       end
@@ -354,7 +355,7 @@ module Mail #:nodoc:
       # Converts the first character to uppercase and the remainder to lowercase.
       #
       # Example:
-      #  'über'.mb_chars.capitalize.to_s # => "Über"
+      #  Mail::Multibyte.mb_chars('über').capitalize.to_s # => "Über"
       def capitalize
         (slice(0) || chars('')).upcase + (slice(1..-1) || chars('')).downcase
       end
@@ -362,8 +363,8 @@ module Mail #:nodoc:
       # Capitalizes the first letter of every word, when possible.
       #
       # Example:
-      #   "ÉL QUE SE ENTERÓ".mb_chars.titleize    # => "Él Que Se Enteró"
-      #   "日本語".mb_chars.titleize                 # => "日本語"
+      #   Mail::Multibyte.mb_chars("ÉL QUE SE ENTERÓ").titleize    # => "Él Que Se Enteró"
+      #   Mail::Multibyte.mb_chars("日本語").titleize                 # => "日本語"
       def titleize
         chars(downcase.to_s.gsub(/\b('?\S)/u) { Unicode.apply_mapping $1, :uppercase_mapping })
       end
@@ -383,7 +384,7 @@ module Mail #:nodoc:
       #
       # Example:
       #   'é'.length                         # => 2
-      #   'é'.mb_chars.decompose.to_s.length # => 3
+      #   Mail::Multibyte.mb_chars('é').decompose.to_s.length # => 3
       def decompose
         chars(Unicode.decompose_codepoints(:canonical, Unicode.u_unpack(@wrapped_string)).pack('U*'))
       end
@@ -392,7 +393,7 @@ module Mail #:nodoc:
       #
       # Example:
       #   'é'.length                       # => 3
-      #   'é'.mb_chars.compose.to_s.length # => 2
+      #   Mail::Multibyte.mb_chars('é').compose.to_s.length # => 2
       def compose
         chars(Unicode.compose_codepoints(Unicode.u_unpack(@wrapped_string)).pack('U*'))
       end
@@ -400,8 +401,8 @@ module Mail #:nodoc:
       # Returns the number of grapheme clusters in the string.
       #
       # Example:
-      #   'क्षि'.mb_chars.length   # => 4
-      #   'क्षि'.mb_chars.g_length # => 3
+      #   Mail::Multibyte.mb_chars('क्षि').length   # => 4
+      #   Mail::Multibyte.mb_chars('क्षि').g_length # => 3
       def g_length
         Unicode.g_unpack(@wrapped_string).length
       end

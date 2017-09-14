@@ -38,7 +38,7 @@ module Mail
   # 
   #   mail.deliver!
   class SMTPConnection
-    include Mail::CheckDeliveryParams
+    attr_accessor :smtp, :settings
 
     def initialize(values)
       raise ArgumentError.new('A Net::SMTP object is required for this delivery method') if values[:connection].nil?
@@ -46,17 +46,21 @@ module Mail
       self.settings = values
     end
 
-    attr_accessor :smtp
-    attr_accessor :settings
-
     # Send the message via SMTP.
     # The from and to attributes are optional. If not set, they are retrieve from the Message.
     def deliver!(mail)
-      smtp_from, smtp_to, message = check_delivery_params(mail)
-      response = smtp.sendmail(message, smtp_from, smtp_to)
+      smtp_from, smtp_to, message = Mail::CheckDeliveryParams.check(mail)
+
+      response = smtp.sendmail(dot_stuff(message), smtp_from, smtp_to)
 
       settings[:return_response] ? response : self
     end
 
+    private
+      # This is Net::SMTP's job, but before Ruby 2.x it does not dot-stuff
+      # an unterminated last line: https://bugs.ruby-lang.org/issues/9627
+      def dot_stuff(message)
+        message.gsub(/(\r\n\.)(\r\n|$)/, '\1.\2')
+      end
   end
 end

@@ -50,13 +50,14 @@ module Mail
     # me the example so we can fix it.
     def initialize(header_text = nil, charset = nil)
       @charset = charset
-      self.raw_source = ::Mail::Utilities.to_crlf(header_text).lstrip
+      self.raw_source = header_text
       split_header if header_text
     end
 
     def initialize_copy(original)
       super
       @fields = @fields.dup
+      @fields.map!(&:dup)
     end
     
     # The preserved raw source of the header as you passed it in, untouched
@@ -92,14 +93,15 @@ module Mail
     #  h.fields = ['From: mikel@me.com', 'To: bob@you.com']
     def fields=(unfolded_fields)
       @fields = Mail::FieldList.new
-      warn "Warning: more than #{self.class.maximum_amount} header fields only using the first #{self.class.maximum_amount}" if unfolded_fields.length > self.class.maximum_amount
+      Kernel.warn "WARNING: More than #{self.class.maximum_amount} header fields; only using the first #{self.class.maximum_amount} and ignoring the rest" if unfolded_fields.length > self.class.maximum_amount
       unfolded_fields[0..(self.class.maximum_amount-1)].each do |field|
 
-        field = Field.new(field, nil, charset)
-        if limited_field?(field.name) && (selected = select_field_for(field.name)) && selected.any? 
-          selected.first.update(field.name, field.value)
-        else
-          @fields << field
+        if field = Field.parse(field, charset)
+          if limited_field?(field.name) && (selected = select_field_for(field.name)) && selected.any?
+            selected.first.update(field.name, field.value)
+          else
+            @fields << field
+          end
         end
       end
 
@@ -248,7 +250,7 @@ module Mail
     private
     
     def raw_source=(val)
-      @raw_source = val
+      @raw_source = ::Mail::Utilities.to_crlf(val).lstrip
     end
     
     # Splits an unfolded and line break cleaned header into individual field

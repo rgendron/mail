@@ -45,7 +45,8 @@ module Mail
                         :user_name            => nil,
                         :password             => nil,
                         :authentication       => nil,
-                        :enable_ssl           => false }.merge!(values)
+                        :enable_ssl           => false,
+                        :enable_starttls      => false }.merge!(values)
     end
 
     attr_accessor :settings
@@ -67,14 +68,14 @@ module Mail
     #   keys:   are passed as criteria to the SEARCH command.  They can either be a string holding the entire search string, 
     #           or a single-dimension array of search keywords and arguments.  Refer to  [IMAP] section 6.4.4 for a full list
     #           The default is 'ALL'
+    #   search_charset: charset to pass to IMAP server search. Omitted by default. Example: 'UTF-8' or 'ASCII'.
     #
     def find(options={}, &block)
       options = validate_options(options)
 
       start do |imap|
         options[:read_only] ? imap.examine(options[:mailbox]) : imap.select(options[:mailbox])
-
-        uids = imap.uid_search(options[:keys])
+        uids = imap.uid_search(options[:keys], options[:search_charset])
         uids.reverse! if options[:what].to_sym == :last
         uids = uids.first(options[:count]) if options[:count].is_a?(Integer)
         uids.reverse! if (options[:what].to_sym == :last && options[:order].to_sym == :asc) ||
@@ -83,14 +84,18 @@ module Mail
         if block_given?
           uids.each do |uid|
             uid = options[:uid].to_i unless options[:uid].nil?
-            fetchdata = imap.uid_fetch(uid, ['RFC822'])[0]
+            fetchdata = imap.uid_fetch(uid, ['RFC822', 'FLAGS'])[0]
             new_message = Mail.new(fetchdata.attr['RFC822'])
             new_message.mark_for_delete = true if options[:delete_after_find]
-            if block.arity == 3
+
+            if block.arity == 4
+              yield new_message, imap, uid, fetchdata.attr['FLAGS']
+            elsif block.arity == 3
               yield new_message, imap, uid
             else
               yield new_message
             end
+
             imap.uid_store(uid, "+FLAGS", [Net::IMAP::DELETED]) if options[:delete_after_find] && new_message.is_marked_for_delete?
             break unless options[:uid].nil?
           end
@@ -116,6 +121,7 @@ module Mail
       mailbox = Net::IMAP.encode_utf7(mailbox)
 
       start do |imap|
+        imap.examine(mailbox)
         imap.uid_search(['ALL']).each do |uid|
           imap.uid_store(uid, "+FLAGS", [Net::IMAP::DELETED])
         end
@@ -154,7 +160,14 @@ module Mail
       def start(config=Mail::Configuration.instance, &block)
         raise ArgumentError.new("Mail::Retrievable#imap_start takes a block") unless block_given?
 
+        if settings[:enable_starttls] && settings[:enable_ssl]
+          raise ArgumentError, ":enable_starttls and :enable_ssl are mutually exclusive. Set :enable_ssl if you're on an IMAPS connection. Set :enable_starttls if you're on an IMAP connection and using STARTTLS for secure TLS upgrade."
+        end
+
         imap = Net::IMAP.new(settings[:address], settings[:port], settings[:enable_ssl], nil, false)
+
+        imap.starttls if settings[:enable_starttls]
+
         if settings[:authentication].nil?
           imap.login(settings[:user_name], settings[:password])
         else

@@ -1,8 +1,9 @@
 # encoding: utf-8
 # frozen_string_literal: true
+require 'mail/parsers/address_lists_parser'
+
 module Mail
   class Address
-
     include Mail::Utilities
 
     # Mail::Address handles all email addresses in Mail.  It takes an email address string
@@ -22,7 +23,6 @@ module Mail
     #  a.comments     #=> ['My email address']
     #  a.to_s         #=> 'Mikel Lindsaar <mikel@test.lindsaar.net> (My email address)'
     def initialize(value = nil)
-      @output_type = :decode
       if value.nil?
         @parsed = false
         @data = nil
@@ -44,14 +44,14 @@ module Mail
     #
     #  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
     #  a.format #=> 'Mikel Lindsaar <mikel@test.lindsaar.net> (My email address)'
-    def format
+    def format(output_type = :decode)
       parse unless @parsed
       if @data.nil?
         EMPTY
-      elsif display_name
-        [quote_phrase(display_name), "<#{address}>", format_comments].compact.join(SPACE)
-      elsif address
-        [address, format_comments].compact.join(SPACE)
+      elsif name = display_name(output_type)
+        [quote_phrase(name), "<#{address(output_type)}>", format_comments].compact.join(SPACE)
+      elsif a = address(output_type)
+        [a, format_comments].compact.join(SPACE)
       else
         raw
       end
@@ -62,9 +62,13 @@ module Mail
     #
     #  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
     #  a.address #=> 'mikel@test.lindsaar.net'
-    def address
+    def address(output_type = :decode)
       parse unless @parsed
-      domain ? "#{local}@#{domain}" : local
+      if d = domain(output_type)
+        "#{local(output_type)}@#{d}"
+      else
+        local(output_type)
+      end
     end
 
     # Provides a way to assign an address to an already made Mail::Address object.
@@ -80,10 +84,10 @@ module Mail
     #
     #  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
     #  a.display_name #=> 'Mikel Lindsaar'
-    def display_name
+    def display_name(output_type = :decode)
       parse unless @parsed
       @display_name ||= get_display_name
-      Encodings.decode_encode(@display_name.to_s, @output_type) if @display_name
+      Encodings.decode_encode(@display_name.to_s, output_type) if @display_name
     end
 
     # Provides a way to assign a display name to an already made Mail::Address object.
@@ -93,7 +97,7 @@ module Mail
     #  a.display_name = 'Mikel Lindsaar'
     #  a.format #=> 'Mikel Lindsaar <mikel@test.lindsaar.net>'
     def display_name=( str )
-      @display_name = str.dup # in case frozen
+      @display_name = str.nil? ? nil : str.dup # in case frozen
     end
 
     # Returns the local part (the left hand side of the @ sign in the email address) of
@@ -101,9 +105,9 @@ module Mail
     #
     #  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
     #  a.local #=> 'mikel'
-    def local
+    def local(output_type = :decode)
       parse unless @parsed
-      Encodings.decode_encode("#{@data.obs_domain_list}#{get_local.strip}", @output_type) if get_local
+      Encodings.decode_encode("#{@data.obs_domain_list}#{get_local.strip}", output_type) if get_local
     end
 
     # Returns the domain part (the right hand side of the @ sign in the email address) of
@@ -111,19 +115,28 @@ module Mail
     #
     #  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
     #  a.domain #=> 'test.lindsaar.net'
-    def domain
+    def domain(output_type = :decode)
       parse unless @parsed
-      Encodings.decode_encode(strip_all_comments(get_domain), @output_type) if get_domain
+      Encodings.decode_encode(strip_all_comments(get_domain), output_type) if get_domain
     end
 
-    # Returns an array of comments that are in the email, or an empty array if there
+    # Returns an array of comments that are in the email, or nil if there
     # are no comments
     #
     #  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
     #  a.comments #=> ['My email address']
+    #
+    #  b = Address.new('Mikel Lindsaar <mikel@test.lindsaar.net>')
+    #  b.comments #=> nil
+
     def comments
       parse unless @parsed
-      get_comments.map { |c| c.squeeze(SPACE) } unless get_comments.empty?
+      comments = get_comments
+      if comments.nil? || comments.none?
+        nil
+      else
+        comments.map { |c| c.squeeze(SPACE) }
+      end
     end
 
     # Sometimes an address will not have a display name, but might have the name
@@ -154,13 +167,11 @@ module Mail
     end
 
     def encoded
-      @output_type = :encode
-      format
+      format :encode
     end
 
     def decoded
-      @output_type = :decode
-      format
+      format :decode
     end
 
     def group
@@ -174,11 +185,11 @@ module Mail
       @data = nil
 
       case value
-      when Mail::Parsers::AddressStruct
+      when Mail::Parsers::AddressListsParser::AddressStruct
         @data = value
       when String
         unless Utilities.blank?(value)
-          address_list = Mail::Parsers::AddressListsParser.new.parse(value)
+          address_list = Mail::Parsers::AddressListsParser.parse(value)
           @data = address_list.addresses.first
         end
       end
@@ -205,9 +216,9 @@ module Mail
     end
 
     def get_display_name
-      if @data.display_name
+      if @data && @data.display_name
         str = strip_all_comments(@data.display_name.to_s)
-      elsif @data.comments && @data.domain
+      elsif @data && @data.comments && @data.domain
         str = strip_domain_comments(format_comments)
       end
       str unless Utilities.blank?(str)

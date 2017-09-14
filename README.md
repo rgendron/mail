@@ -1,8 +1,6 @@
-Mail [![Build Status](https://travis-ci.org/mikel/mail.png?branch=master)](https://travis-ci.org/mikel/mail)
-====
+# Mail [![Build Status](https://travis-ci.org/mikel/mail.png?branch=master)](https://travis-ci.org/mikel/mail)
 
-Introduction
-------------
+## Introduction
 
 Mail is an internet library for Ruby that is designed to handle emails
 generation, parsing and sending in a simple, rubyesque manner.
@@ -25,8 +23,7 @@ Finally, Mail has been designed with a very simple object oriented system
 that really opens up the email messages you are parsing, if you know what
 you are doing, you can fiddle with every last bit of your email directly.
 
-Donations
--------------
+## Donations
 
 Mail has been downloaded millions of times, by people around the world, in fact,
 it represents more than 1% of *all* gems downloaded.
@@ -38,52 +35,48 @@ me a nice email :)
 
 <a href='http://www.pledgie.com/campaigns/8790'><img alt='Click here to lend your support to: mail and make a donation at www.pledgie.com !' src='http://www.pledgie.com/campaigns/8790.png?skin_name=chrome' border='0' /></a>
 
+# Contents
+* [Compatibility](#compatibility)
+* [Discussion](#discussion)
+* [Current Capabilities of Mail](#current-capabilities-of-mail)
+* [Roadmap](#roadmap)
+* [Testing Policy](#testing-policy)
+* [API Policy](#api-policy)
+* [Installation](#installation)
+* [Encodings](#encodings)
+* [Contributing](#contributing)
+* [Usage](#usage)
+* [Core Extensions](#core-extensions)
+* [Excerpts from TREC Span Corpus 2005](#excerpts-from-trec-span-corpus-2005)
+* [License](#license)
 
-Compatibility
--------------
+## Compatibility
 
-Every Mail commit is tested by Travis on the [following platforms](https://github.com/mikel/mail/blob/master/.travis.yml)
+Mail supports Ruby 1.8.7+, including JRuby and Rubinius.
 
-* ruby-1.8.7 [ i686 ]
-* ruby-1.9.2 [ x86_64 ]
-* ruby-1.9.3 [ x86_64 ]
-* ruby-2.0.0 [ x86_64 ]
-* ruby-2.1.2 [ x86_64 ]
-* ruby-head [ x86_64 ]
-* jruby [ x86_64 ]
-* jruby-head [ x86_64 ]
-* rbx-2 [ x86_64 ]
+Every Mail commit is tested by Travis on [all supported Ruby versions](https://github.com/mikel/mail/blob/master/.travis.yml).
 
-Testing a specific mime type (needed for 1.8.7 for example) can be done manually with:
-
-```sh
-BUNDLE_GEMFILE=gemfiles/mime_types_1.16.gemfile (bundle check || bundle) && rake
-```
-
-Discussion
-----------
+## Discussion
 
 If you want to discuss mail with like minded individuals, please subscribe to
 the [Google Group](http://groups.google.com/group/mail-ruby).
 
-Current Capabilities of Mail
-----------------------------
+## Current Capabilities of Mail
 
-* RFC2822 Support, Reading and Writing
+* RFC5322 Support, Reading and Writing
+* RFC6532 Support, reading UTF-8 headers
 * RFC2045-2049 Support for multipart emails
 * Support for creating multipart alternate emails
 * Support for reading multipart/report emails &amp; getting details from such
-* Support for multibyte emails - needs quite a lot of work and testing
 * Wrappers for File, Net/POP3, Net/SMTP
-* Auto encoding of non US-ASCII header fields
-* Auto encoding of non US-ASCII bodies
+* Auto-encoding of non-US-ASCII bodies and header fields
 
-Mail is RFC2822 compliant now, that is, it can parse and generate valid US-ASCII
-emails.  There are a few obsoleted syntax emails that it will have problems with, but
-it also is quite robust, meaning, if it finds something it doesn't understand it will
-not crash, instead, it will skip the problem and keep parsing.  In the case of a header
-it doesn't understand, it will initialise the header as an optional unstructured
-field and continue parsing.
+Mail is RFC5322 and RFC6532 compliant now, that is, it can parse US-ASCII and UTF-8
+emails and generate US-ASCII emails. There are a few obsoleted syntax emails that
+it will have problems with, but it also is quite robust, meaning, if it finds something
+it doesn't understand it will not crash, instead, it will skip the problem and keep
+parsing. In the case of a header it doesn't understand, it will initialise the header
+as an optional unstructured field and continue parsing.
 
 This means Mail won't (ever) crunch your data (I think).
 
@@ -91,16 +84,14 @@ You can also create MIME emails.  There are helper methods for making a
 multipart/alternate email for text/plain and text/html (the most common pair)
 and you can manually create any other type of MIME email.
 
-Roadmap
--------
+## Roadmap
 
 Next TODO:
 
 * Improve MIME support for character sets in headers, currently works, mostly, needs
   refinement.
 
-Testing Policy
---------------
+## Testing Policy
 
 Basically... we do BDD on Mail.  No method gets written in Mail without a
 corresponding or covering spec.  We expect as a minimum 100% coverage
@@ -112,23 +103,20 @@ It also means you can be sure Mail will behave correctly.
 
 Note: If you care about core extensions (aka "monkey-patching"), please read the Core Extensions section near the end of this README.
 
-API Policy
-----------
+## API Policy
 
 No API removals within a single point release.  All removals to be deprecated with
 warnings for at least one MINOR point release before removal.
 
 Also, all private or protected methods to be declared as such - though this is still I/P.
 
-Installation
-------------
+## Installation
 
 Installation is fairly simple, I host mail on rubygems, so you can just do:
 
     # gem install mail
 
-Encodings
----------
+## Encodings
 
 If you didn't know, handling encodings in Emails is not as straight forward as you
 would hope.
@@ -160,13 +148,11 @@ I have tried to simplify it some:
    provide encoded parameter values when you call the parameter names through the
    <code>object.parameters['<parameter_name>']</code> method call.
 
-Contributing
-------------
+## Contributing
 
 Please do!  Contributing is easy in Mail.  Please read the CONTRIBUTING.md document for more info
 
-Usage
------
+## Usage
 
 All major mail functions should be able to happen from the Mail module.
 So, you should be able to just <code>require 'mail'</code> to get started.
@@ -234,7 +220,7 @@ what you are doing.
 ### Sending an email:
 
 Mail defaults to sending via SMTP to local host port 25.  If you have a
-sendmail or postfix daemon running on on this port, sending email is as
+sendmail or postfix daemon running on this port, sending email is as
 easy as:
 
 ```ruby
@@ -294,7 +280,17 @@ mail.delivery_method :exim, :location => "/usr/bin/exim"
 mail.deliver
 ```
 
-### Getting emails from a pop server:
+Mail may be "delivered" to a logfile, too, for development and testing:
+
+```ruby
+# Delivers by logging the encoded message to $stdout
+mail.delivery_method :logger
+
+# Delivers to an existing logger at :debug severity
+mail.delivery_method :logger, logger: other_logger, severity: :debug
+```
+
+### Getting Emails from a POP Server:
 
 You can configure Mail to receive email using <code>retriever_method</code>
 within <code>Mail.defaults</code>:
@@ -347,7 +343,7 @@ mail.cc              #=> 'sam@test.lindsaar.net'
 mail.subject         #=> "This is the subject"
 mail.date.to_s       #=> '21 Nov 1997 09:55:06 -0600'
 mail.message_id      #=> '<4D6AA7EB.6490534@xxx.xxx>'
-mail.body.decoded    #=> 'This is the body of the email...
+mail.decoded         #=> 'This is the body of the email...
 ```
 
 Many more methods available.
@@ -373,7 +369,7 @@ is another message which can have many or no parts.
 A message will only have parts if it is a multipart/mixed or multipart/related
 content type and has a boundary defined.
 
-### Testing and extracting attachments
+### Testing and Extracting Attachments
 ```ruby
 mail.attachments.each do | attachment |
   # Attachments is an AttachmentsList object containing a
@@ -382,14 +378,14 @@ mail.attachments.each do | attachment |
     # extracting images for example...
     filename = attachment.filename
     begin
-      File.open(images_dir + filename, "w+b", 0644) {|f| f.write attachment.body.decoded}
+      File.open(images_dir + filename, "w+b", 0644) {|f| f.write attachment.decoded}
     rescue => e
       puts "Unable to save data for #{filename} because #{e.message}"
     end
   end
 end
 ```
-### Writing and sending a multipart/alternative (html and text) email
+### Writing and Sending a Multipart/Alternative (HTML and Text) Email
 
 Mail makes some basic assumptions and makes doing the common thing as
 simple as possible.... (asking a lot from a mail library)
@@ -455,7 +451,7 @@ Mail assumes that if your text in the body is only us-ascii, that your
 transfer encoding is 7bit and it is text/plain.  You can override this
 by explicitly declaring it.
 
-### Making Multipart/Alternate, without a block
+### Making Multipart/Alternate, Without a Block
 
 You don't have to use a block with the text and html part included, you
 can just do it declaratively.  However, you need to add Mail::Parts to
@@ -483,7 +479,7 @@ mail.html_part = html_part
 
 Results in the same email as done using the block form
 
-### Getting error reports from an email:
+### Getting Error Reports from an Email:
 
 ```ruby
 @mail = Mail.read('/path/to/bounce_message.eml')
@@ -527,7 +523,6 @@ than mail (this should be rarely needed)
 
 ```ruby
 @mail = Mail.new
-file_data = File.read('path/to/myfile.pdf')
 @mail.attachments['myfile.pdf'] = { :mime_type => 'application/x-pdf',
                                     :content => File.read('path/to/myfile.pdf') }
 @mail.parts.first.mime_type #=> 'application/x-pdf'
@@ -560,8 +555,7 @@ end
 ```
 See "Testing and extracting attachments" above for more details.
 
-Using Mail with Testing or Spec'ing Libraries
----------------------------------------------
+## Using Mail with Testing or Spec'ing Libraries
 
 If mail is part of your system, you'll need a way to test it without actually
 sending emails, the TestMailer can do this for you.
@@ -611,70 +605,53 @@ describe "sending an email" do
     end
   end
 
-  it { should have_sent_email } # passes if any email at all was sent
+  it { is_expected.to have_sent_email } # passes if any email at all was sent
 
-  it { should have_sent_email.from('you@you.com') }
-  it { should have_sent_email.to('mike1@me.com') }
+  it { is_expected.to have_sent_email.from('you@you.com') }
+  it { is_expected.to have_sent_email.to('mike1@me.com') }
 
   # can specify a list of recipients...
-  it { should have_sent_email.to(['mike1@me.com', 'mike2@me.com']) }
+  it { is_expected.to have_sent_email.to(['mike1@me.com', 'mike2@me.com']) }
 
   # ...or chain recipients together
-  it { should have_sent_email.to('mike1@me.com').to('mike2@me.com') }
+  it { is_expected.to have_sent_email.to('mike1@me.com').to('mike2@me.com') }
 
-  it { should have_sent_email.with_subject('testing') }
+  it { is_expected.to have_sent_email.with_subject('testing') }
 
-  it { should have_sent_email.with_body('hello') }
+  it { is_expected.to have_sent_email.with_body('hello') }
 
   # Can match subject or body with a regex
   # (or anything that responds_to? :match)
 
-  it { should have_sent_email.matching_subject(/test(ing)?/) }
-  it { should have_sent_email.matching_body(/h(a|e)llo/) }
+  it { is_expected.to have_sent_email.matching_subject(/test(ing)?/) }
+  it { is_expected.to have_sent_email.matching_body(/h(a|e)llo/) }
 
   # Can chain together modifiers
   # Note that apart from recipients, repeating a modifier overwrites old value.
 
-  it { should have_sent_email.from('you@you.com').to('mike1@me.com').matching_body(/hell/)
+  it { is_expected.to have_sent_email.from('you@you.com').to('mike1@me.com').matching_body(/hell/)
 
   # test for attachments
 
   # ... by specific attachment
-  it { should_have_sent_email.with_attachments(my_attachment) }
+  it { is_expected.to have_sent_email.with_attachments(my_attachment) }
 
   # ... or any attachment
-  it { should_have_sent_email.with_attachments(any_attachment) }
+  it { is_expected.to have_sent_email.with_attachments(any_attachment) }
 
   # ... by array of attachments
-  it { should_have_sent_email.with_attachments([my_attachment1, my_attachment2]) } #note that order is important
+  it { is_expected.to have_sent_email.with_attachments([my_attachment1, my_attachment2]) } #note that order is important
 
   #... by presence
-  it { should_have_sent_email.with_any_attachments }
+  it { is_expected.to have_sent_email.with_any_attachments }
 
   #... or by absence
-  it { should_have_sent_email.with_no_attachments }
+  it { is_expected.to have_sent_email.with_no_attachments }
 
 end
 ```
 
-Core Extensions
----------------
-
-The mail gem adds several constants and methods to Ruby's core objects (similar to the activesupport gem from the Rails project).  For example:
-
-    NilClass::blank?
-    NilClass::to_crlf
-    NilClass::to_lf
-    Object::blank?
-    String::to_crlf
-    String::to_lf
-    String::blank?
-    ...etc...
-
-For all the details, check out lib/mail/core_extensions/.
-
-Excerpts from TREC Spam Corpus 2005
------------------------------------
+## Excerpts from TREC Spam Corpus 2005
 
 The spec fixture files in spec/fixtures/emails/from_trec_2005 are from the
 2005 TREC Public Spam Corpus. They remain copyrighted under the terms of
@@ -692,8 +669,7 @@ They are used as allowed by 'Permitted Uses, Clause 3':
 
      -- http://plg.uwaterloo.ca/~gvcormac/treccorpus/
 
-License
--------
+## License
 
 (The MIT License)
 

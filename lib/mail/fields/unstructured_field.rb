@@ -32,6 +32,12 @@ module Mail
       else
         # Ensure we are dealing with a string
         value = value.to_s
+
+        # Mark UTF-8 strings parsed from ASCII-8BIT
+        if value.respond_to?(:force_encoding) && value.encoding == Encoding::ASCII_8BIT
+          utf8 = value.dup.force_encoding(Encoding::UTF_8)
+          value = utf8 if utf8.valid_encoding?
+        end
       end
 
       if charset
@@ -67,7 +73,11 @@ module Mail
     private
 
     def do_encode
-      value.nil? ? '' : "#{wrapped_value}\r\n"
+      if value && !value.empty?
+        "#{wrapped_value}\r\n"
+      else
+        ''
+      end
     end
 
     def do_decode
@@ -121,7 +131,7 @@ module Mail
     def fold(prepend = 0) # :nodoc:
       encoding       = normalized_encoding
       decoded_string = decoded.to_s
-      should_encode  = decoded_string.not_ascii_only?
+      should_encode  = !decoded_string.ascii_only?
       if should_encode
         first = true
         words = decoded_string.split(/[ \t]/).map do |word|
@@ -130,7 +140,7 @@ module Mail
           else
             word = " #{word}"
           end
-          if word.not_ascii_only?
+          if !word.ascii_only?
             word
           else
             word.scan(/.{7}|.+$/)
@@ -148,7 +158,14 @@ module Mail
         first_word = true
         while !words.empty?
           break unless word = words.first.dup
-          word.encode!(charset) if charset && word.respond_to?(:encode!)
+
+          # Convert on 1.9+ only since we aren't sure of the current
+          # charset encoding on 1.8. We'd need to track internal/external
+          # charset on each field.
+          if charset && word.respond_to?(:encoding)
+            word = Encodings.transcode_charset(word, word.encoding, charset)
+          end
+
           word = encode(word) if should_encode
           word = encode_crlf(word)
           # Skip to next line if we're going to go past the limit

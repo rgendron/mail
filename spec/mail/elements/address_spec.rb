@@ -38,6 +38,12 @@ describe Mail::Address do
       end
     end
 
+    it "should allow us to instantiate an empty address object and call name" do
+      [nil, '', ' '].each do |input|
+        expect(Mail::Address.new(input).name).to eq nil
+      end
+    end
+
     ['"-Earnings...Notification-" <vodacom.co.rs>', '<56253817>'].each do |spammy_address|
       it "should ignore funky local-only spammy addresses in angle brackets #{spammy_address}" do
         expect(Mail::Address.new(spammy_address).address).to eq nil
@@ -81,6 +87,22 @@ describe Mail::Address do
     it "should decode the display name without calling #decoded first" do
       encoded = '=?ISO-8859-1?Q?Jan_Kr=FCtisch?= <jan@krutisch.de>'
       expect(Mail::Address.new(encoded).display_name).to eq 'Jan Krütisch'
+    end
+
+    it "doesn't get stuck on decode or encode output mode" do
+      a = Mail::Address.new('=?ISO-8859-1?Q?Jan_Kr=FCtisch?= <jan@krutisch.de>')
+      expect(a.display_name).to eq 'Jan Krütisch'
+
+      # Ignore result, ensure it doesn't flip format mode
+      a.encoded
+      expect(a.display_name).to eq 'Jan Krütisch'
+    end
+
+    it "should allow nil display name" do
+      a = Mail::Address.new
+      expect(a.display_name).to be_nil
+      a.display_name = nil
+      expect(a.display_name).to be_nil
     end
 
     it "should give back the local part" do
@@ -200,6 +222,20 @@ describe Mail::Address do
           a = Mail::Address.new(%Q|me@#{words}|)
           expect(a.domain).to eq ok
         end
+      end
+    end
+
+    describe 'RFC 6532 UTF-8 chars' do
+      it 'local' do
+        expect(Mail::Address.new('💌@example.com').local).to eq '💌'
+      end
+
+      it 'domain' do
+        expect(Mail::Address.new('test@exämple.com').domain).to eq 'exämple.com'
+      end
+
+      it 'display name' do
+        expect(Mail::Address.new('"💌" <test@example.com>').display_name).to eq '💌'
       end
     end
 
@@ -568,17 +604,16 @@ describe Mail::Address do
       end
 
       it "should handle |jdoe@test   . example|" do
-        pending
         address = Mail::Address.new('jdoe@test   . example')
         expect(address).to break_down_to({
-                                         :name         => 'jdoe@test.example',
-                                         :display_name => 'jdoe@test.example',
-                                         :address      => 'jdoe@test.example',
+                                         :name         => nil,
+                                         :display_name => nil,
+                                         :address      => 'jdoe@test   . example',
                                          :comments     => nil,
-                                         :domain       => 'test.example',
+                                         :domain       => 'test   . example',
                                          :local        => 'jdoe',
-                                         :format       => 'jdoe@test.example',
-                                         :raw          => 'jdoe@test.example'})
+                                         :format       => 'jdoe@test   . example',
+                                         :raw          => 'jdoe@test   . example'})
       end
 
       it "should handle |groupname+domain.com@example.com|" do
@@ -607,8 +642,47 @@ describe Mail::Address do
                                          :raw          => '=?UTF-8?B?8J+RjQ==?= <=?UTF-8?B?8J+RjQ==?=@=?UTF-8?B?8J+RjQ==?=.emoji>'})
       end
 
+      it 'should handle |"Mikel \"quotes\" Lindsaar" <test@lindsaar.net>|' do
+        address = Mail::Address.new('"Mikel \"quotes\" Lindsaar" <test@lindsaar.net>')
+        expect(address).to break_down_to({
+                                         :name         => 'Mikel "quotes" Lindsaar',
+                                         :display_name => 'Mikel "quotes" Lindsaar',
+                                         :address      => 'test@lindsaar.net',
+                                         :comments     => nil,
+                                         :domain       => 'lindsaar.net',
+                                         :local        => 'test',
+                                         :format       => '"Mikel \"quotes\" Lindsaar" <test@lindsaar.net>',
+                                         :raw          => '"Mikel \"quotes\" Lindsaar" <test@lindsaar.net>'})
+      end
+
+      it 'should handle |"Mikel \" Lindsaar" <test@lindsaar.net>|' do
+        address = Mail::Address.new('"Mikel \" Lindsaar" <test@lindsaar.net>')
+        expect(address).to break_down_to({
+                                         :name         => 'Mikel " Lindsaar',
+                                         :display_name => 'Mikel " Lindsaar',
+                                         :address      => 'test@lindsaar.net',
+                                         :comments     => nil,
+                                         :domain       => 'lindsaar.net',
+                                         :local        => 'test',
+                                         :format       => '"Mikel \" Lindsaar" <test@lindsaar.net>',
+                                         :raw          => '"Mikel \" Lindsaar" <test@lindsaar.net>'})
+      end
+
+      it 'should handle |"Mikel \"quotes\" (and comments) Lindsaar" (comment1)<test(comment2)@lindsaar.net(comment3)>|' do
+        address = Mail::Address.new('"Mikel \"quotes\" (and comments) Lindsaar" (comment1)<test(comment2)@lindsaar.net(comment3)>')
+        expect(address).to break_down_to({
+                                         :name         => 'Mikel "quotes" (and comments) Lindsaar',
+                                         :display_name => 'Mikel "quotes" (and comments) Lindsaar',
+                                         :address      => 'test(comment2)@lindsaar.net',
+                                         :comments     => ['comment1', 'comment2', 'comment3'],
+                                         :domain       => 'lindsaar.net',
+                                         :local        => 'test(comment2)',
+                                         :format       => '"Mikel \"quotes\" (and comments) Lindsaar" <test(comment2)@lindsaar.net> (comment1 comment2 comment3)',
+                                         :raw          => '"Mikel \"quotes\" (and comments) Lindsaar" (comment1)<test(comment2)@lindsaar.net(comment3)>'})
+      end
+
       it "should expose group" do
-        struct = Mail::Parsers::AddressStruct.new(nil, nil, nil, nil, nil, nil, "GROUP", nil)
+        struct = Mail::Parsers::AddressListsParser::AddressStruct.new(nil, nil, nil, nil, nil, nil, "GROUP", nil)
         address = Mail::Address.new(struct)
         expect(address.group).to eq("GROUP")
       end

@@ -15,6 +15,18 @@ describe "SMTP Delivery Method" do
     Mail.delivery_method.smtp.finish
   end
 
+  it "dot-stuff unterminated last line of the message" do
+    Mail.deliver do
+      from 'from@example.com'
+      to 'to@example.com'
+      subject 'dot-stuff last line'
+      body "this is a test\n.\nonly a test\n."
+    end
+
+    message = MockSMTP.deliveries.first
+    expect(Mail.new(message).decoded).to eq("this is a test\n..\nonly a test\n..")
+  end
+
   it "should send an email using open SMTP connection" do
     mail = Mail.deliver do
       from    'roger@test.lindsaar.net'
@@ -48,19 +60,23 @@ describe "SMTP Delivery Method" do
   end
 
 
-  it "should raise an error if no sender is defined" do
+  it "should not raise errors if no sender is defined" do
     Mail.defaults do
       smtp = Net::SMTP.start('127.0.0.1', 25)
       delivery_method :smtp_connection, :connection => smtp, :port => 587, :return_response => true
     end
 
+    mail = Mail.new do
+      to "to@somemail.com"
+      subject "Email with no sender"
+      body "body"
+    end
+
+    expect(mail.smtp_envelope_from).to be_nil
+
     expect do
-      Mail.deliver do
-        to "to@somemail.com"
-        subject "Email with no sender"
-        body "body"
-      end
-    end.to raise_error('An SMTP From address is required to send a message. Set the message smtp_envelope_from, return_path, sender, or from address.')
+      mail.deliver
+    end.to raise_error('SMTP From address may not be blank: nil')
   end
 
   it "should raise an error if no recipient if defined" do
@@ -69,12 +85,16 @@ describe "SMTP Delivery Method" do
       delivery_method :smtp_connection, :connection => smtp, :port => 587, :return_response => true
     end
 
+    mail = Mail.new do
+      from "from@somemail.com"
+      subject "Email with no recipient"
+      body "body"
+    end
+
+    expect(mail.smtp_envelope_to).to eq([])
+
     expect do
-      Mail.deliver do
-        from "from@somemail.com"
-        subject "Email with no recipient"
-        body "body"
-      end
-    end.to raise_error('An SMTP To address is required to send a message. Set the message smtp_envelope_to, to, cc, or bcc address.')
+      mail.deliver
+    end.to raise_error('SMTP To address may not be blank: []')
   end
 end

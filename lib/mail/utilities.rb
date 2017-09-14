@@ -1,5 +1,7 @@
 # encoding: utf-8
 # frozen_string_literal: true
+require 'mail/constants'
+
 module Mail
   module Utilities
 
@@ -72,11 +74,26 @@ module Mail
     #  unqoute(string) #=> 'This is "a string"'
     def unquote( str )
       if str =~ /^"(.*?)"$/
-        $1.gsub(/\\(.)/, '\1')
+        unescape($1)
       else
         str
       end
     end
+    module_function :unquote
+
+    # Removes any \-escaping.
+    #
+    # Example:
+    #
+    #  string = 'This is \"a string\"'
+    #  unescape(string) #=> 'This is "a string"'
+    #
+    #  string = '"This is \"a string\""'
+    #  unescape(string) #=> '"This is "a string""'
+    def unescape( str )
+      str.gsub(/\\(.)/, '\1')
+    end
+    module_function :unescape
 
     # Wraps a string in parenthesis and escapes any that are in the string itself.
     #
@@ -178,7 +195,7 @@ module Mail
     # Example:
     #
     #  string = :resent_from_field
-    #  dasherize ( string ) #=> 'resent_from_field'
+    #  dasherize( string ) #=> 'resent-from-field'
     def dasherize( str )
       str.to_s.tr(UNDERSCORE, HYPHEN)
     end
@@ -274,6 +291,5 @@ module Mail
         value.respond_to?(:empty?) ? value.empty? : !value
       end
     end
-
   end
 end
